@@ -1,9 +1,14 @@
-﻿namespace PSXSharp.Core {
+﻿using System.Runtime.InteropServices;
+
+namespace PSXSharp.Core {
     public interface CPU {
         public abstract void Reset();
         public abstract void TickFrame();
-        public abstract double GetSpeed();
+        public abstract void SetInvalidAllRAMBlocks();
+        public abstract void SetInvalidAllBIOSBlocks();
 
+        public abstract void SetInvalidRAMBlock(uint block);
+        public abstract double GetSpeed();
         public ref BUS GetBUS();
 
         //R3000 Registers
@@ -53,6 +58,13 @@
             IllegalInstruction = 0xa,
             CoprocessorError = 0xb,
             Overflow = 0xc
+        }
+
+        //To emulate load delay
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RegisterLoad {
+            public uint RegisterNumber;
+            public uint Value;
         }
     }
 }

@@ -3,19 +3,15 @@ using OpenTK.Mathematics;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using PSXSharp.Core;
-using PSXSharp.Core.Interpreter;
-using PSXSharp.Core.x64_Recompiler;
 using PSXSharp.Peripherals.GPU;
 using PSXSharp.Peripherals.IO;
 using PSXSharp.Peripherals.MDEC;
 using PSXSharp.Peripherals.Timers;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Timers;
-using System.Windows.Forms;
 using Keys = OpenTK.Windowing.GraphicsLibraryFramework.Keys;
 
 namespace PSXSharp {
@@ -78,32 +74,12 @@ namespace PSXSharp {
                 Ex1,Ex2,Timer0,Timer1,Timer2,Mdec,Gpu
                 );
 
-            string cpuType = "";
 
-            bool IsRecompiler = true;
-            bool Is_x64 = true;
+            bool isRecompiler = true;
+            bool is_x64 = true;
+            CPU CPU = CPUWrapper.CreateInstance(isRecompiler, is_x64, isBootingEXE, bootPath, Bus);
 
-            CPU CPU;
-            if (IsRecompiler) {
-                if (Is_x64) {
-                    if (RuntimeInformation.ProcessArchitecture != Architecture.X64 || !RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
-                        MessageBox.Show("Unsupported OS/Architecture.\nProgram will exit.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        throw new NotSupportedException();
-                    }
-
-                    CPU = CPU_x64_Recompiler.GetOrCreateCPU(isBootingEXE, bootPath, Bus);
-                    cpuType = "x64 JIT";
-
-                } else {
-                    CPU = new CPU_MSIL_Recompiler(isBootingEXE, bootPath, Bus);
-                    cpuType = "MSIL JIT";
-                }
-
-            } else {
-                CPU = new CPU_Interpreter(isBootingEXE, bootPath, Bus);
-                cpuType = "Interpreter";
-            }
-
+            string cpuType = CPUWrapper.GetCPUType();
             mainWindow.MainCPU = CPU;
 
             mainWindow.Title += " | ";
@@ -123,7 +99,6 @@ namespace PSXSharp {
             mainWindow.Dispose();   //Will reach this if the render window 
             mainWindow = null;
             SerialIO1.Dispose();
-
         }
 
         /*public byte[] ImageToByteArray(string Icon) {
@@ -133,6 +108,7 @@ namespace PSXSharp {
 
             return pixels;
         }*/
+
     }
 
     public class Renderer : GameWindow {    //Now it gets really messy 
@@ -1345,6 +1321,7 @@ namespace PSXSharp {
             GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);
 
         }
+
         public void DisableBlending() {
             ///GL.Disable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.One, BlendingFactor.Zero);
@@ -1452,10 +1429,10 @@ namespace PSXSharp {
                 Thread.Sleep(100);
 
             } else if (e.Key.Equals(Keys.F1)) {
-                Console.WriteLine("Dumping memory...");
-                File.WriteAllBytes("MemoryDump.bin", MainCPU.GetBUS().RAM.GetMemoryReference());
+                /*Console.WriteLine("Dumping memory...");
+                File.WriteAllBytes("MemoryDump.bin", MainCPU.GetBUS().RAM.GetMemoryPointer());
                 Console.WriteLine("Done!");
-                Thread.Sleep(100);
+                Thread.Sleep(100);*/
 
             } else if (e.Key.Equals(Keys.F2)) {
                 Console.WriteLine("Resetting...");
@@ -1519,10 +1496,7 @@ namespace PSXSharp {
         }
       
         protected override void OnUnload() {
-            if (MainCPU.GetType() == typeof(CPU_x64_Recompiler)) {
-                CPU_x64_Recompiler cpu = (CPU_x64_Recompiler)MainCPU;
-                cpu.Dispose();
-            }
+            CPUWrapper.DisposeCPU();
 
             // Unbind all the resources by binding the targets to 0/null.
             // Unbind all the resources by binding the targets to 0/null.

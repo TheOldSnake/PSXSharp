@@ -2,7 +2,6 @@
 using static PSXSharp.Core.x64_Recompiler.CPU_x64_Recompiler;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
-using System.Linq.Expressions;
 
 namespace PSXSharp.Core.x64_Recompiler {
     public unsafe class NativeMemoryManager : IDisposable {
@@ -24,6 +23,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         private const int SIZE_OF_EXECUTABLE_MEMORY = 64 * 1024 * 1024; //64MB
 
+        private static byte* GuestMemory;
         private static byte* ExecutableMemoryBase;
         private byte* AddressOfNextBlock;
         private CPUNativeStruct* CPU_Struct_Ptr;
@@ -43,6 +43,10 @@ namespace PSXSharp.Core.x64_Recompiler {
         //Function poitner to emitted dispatcher
         public static void* Dispatcher;
         private int DispatcherSize;
+
+        //Dummy Code to call recompiler
+        public static void* StubBlock;
+        private int StubBlockSize;
 
         private NativeMemoryManager() {
             //Allocate 64MB of executable memory
@@ -81,16 +85,12 @@ namespace PSXSharp.Core.x64_Recompiler {
             return x64CacheBlocksStructs;
         }
 
-        public void PrecompileRegisterTransfare() {
-            Span<byte> emittedCode = x64_JIT.PrecompileRegisterTransfare();
-            RegisterTransfareSize = emittedCode.Length;
-            RegisterTransfare = VirtualAlloc(null, RegisterTransfareSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-            fixed (byte* blockPtr = &emittedCode[0]) {
-                NativeMemory.Copy(blockPtr, RegisterTransfare, (nuint)emittedCode.Length);
-            }
+        public static byte* AllocateGuestMemory() {
+            GuestMemory = (byte*)NativeMemory.AllocZeroed(CPU_x64_Recompiler.RAM_SIZE);
+            return GuestMemory;
         }
 
-        public delegate* unmanaged[Stdcall] <uint> CompileDispatcher() {
+        /*public delegate* unmanaged[Stdcall] <void> CompileDispatcher() {
             Span<byte> emittedCode = x64_JIT.EmitDispatcher();
             DispatcherSize = emittedCode.Length;
             Dispatcher = VirtualAlloc(null, DispatcherSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -98,30 +98,31 @@ namespace PSXSharp.Core.x64_Recompiler {
                 NativeMemory.Copy(blockPtr, Dispatcher, (nuint)emittedCode.Length);
             }
 
-            return (delegate* unmanaged[Stdcall]<uint>)Dispatcher;
+            return (delegate* unmanaged[Stdcall]<void>)Dispatcher;
+        }*/
+
+        public delegate* unmanaged[Stdcall]<void> CompileStubBlock() {
+            Span<byte> emittedCode = x64_JIT.EmitStubBlock();
+            StubBlockSize = emittedCode.Length;
+            StubBlock = VirtualAlloc(null, StubBlockSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+            fixed (byte* blockPtr = &emittedCode[0]) {
+                NativeMemory.Copy(blockPtr, StubBlock, (nuint)emittedCode.Length);
+            }
+
+            return (delegate* unmanaged[Stdcall]<void>)StubBlock;
         }
 
         public delegate* unmanaged[Stdcall]<void> WriteExecutableBlock(ref Span<byte> block, byte* oldPointer, int oldSize) {
             delegate* unmanaged[Stdcall] <void> function;
 
-            //Check If we can replace it with another invalid block 
-            byte* possibleFit = BestFit(block.Length);
-            if (possibleFit != null) {
-                fixed (byte* blockPtr = &block[0]) {
-                    NativeMemory.Copy(blockPtr, possibleFit, (nuint)block.Length);
-                }
-
-                //Cast to delegate*
-                return (delegate* unmanaged[Stdcall]<void>)possibleFit;
-            }
-
-            //Otherwise we copy to a new part of the memory and increment the pointer
             if (!HasEnoughMemory(block.Length)) {
                 //Easiest solution: nuke Everything and start over
                 //No need to call NativeMemory.Clear, we just reset the pointers and unlink the blocks.
                 AddressOfNextBlock = ExecutableMemoryBase;
-                UnlinkAllBlocks(ref BIOS_CacheBlocks);
-                UnlinkAllBlocks(ref RAM_CacheBlocks);
+
+                CPUWrapper.GetCPUInstance().SetInvalidAllRAMBlocks();
+                CPUWrapper.GetCPUInstance().SetInvalidAllBIOSBlocks();
+
                 InvalidBlocks.Clear();
                 Console.WriteLine("[NativeMemoryManager] Memory Resetted!");
             }
@@ -139,21 +140,15 @@ namespace PSXSharp.Core.x64_Recompiler {
             AddressOfNextBlock += block.Length;
             AddressOfNextBlock = Align(AddressOfNextBlock, 16);
 
-            //If we use new part of the memory and there exists an old version of this block then mark it as free
-            if (oldPointer != null && oldSize > 0) {
-                InvalidBlocks.Add(((ulong)oldPointer, oldSize));
-                InvalidBlocksTotalSize += oldSize;
-            }
-
             return function;
         }
-
 
         private byte* Align(byte* address, ulong bytes) {
             ulong addressValue = (ulong)address;
             return (byte*)((addressValue + (bytes - 1)) & ~(bytes - 1));
         }
 
+        //Unused.. TODO?
         private byte* BestFit(int size) {
             if (InvalidBlocks.Count > 0) {
                 InvalidBlocks.Sort((a, b) => a.size.CompareTo(b.size)); //Sort by size (ascending)
@@ -178,24 +173,6 @@ namespace PSXSharp.Core.x64_Recompiler {
             return null;
         }
 
-        private void UnlinkAllBlocks(ref x64CacheBlock[] cacheBlock) {
-            foreach(x64CacheBlock block in cacheBlock) {
-                if (block.IsCompiled) {
-                    block.IsCompiled = false;
-                    block.FunctionPointer = null;
-                }
-            }
-        }
-
-        public static void UnlinkRAMBlock(uint address) {   //Unused and Very bad
-            foreach (x64CacheBlock block in RAM_CacheBlocks) {
-                if (block.IsCompiled && address >= block.Address && address < (block.Address + (block.TotalMIPS_Instructions << 2))) {
-                    block.IsCompiled = false;
-                    block.FunctionPointer = null;
-                }
-            }
-        }
-
         public bool HasEnoughMemory(int length) {
             //Console.WriteLine(((AddressOfNextBlock + length - ExecutableMemoryBase) / (1024*1024)));
             return SIZE_OF_EXECUTABLE_MEMORY > (AddressOfNextBlock + length - ExecutableMemoryBase);
@@ -212,14 +189,21 @@ namespace PSXSharp.Core.x64_Recompiler {
                 VirtualFree(ExecutableMemoryBase, SIZE_OF_EXECUTABLE_MEMORY, MEM_RELEASE);  
                 VirtualFree(RegisterTransfare, RegisterTransfareSize, MEM_RELEASE);
                 VirtualFree(Dispatcher, DispatcherSize, MEM_RELEASE);
+                VirtualFree(StubBlock, StubBlockSize, MEM_RELEASE);
+
 
                 NativeMemory.Free(CPU_Struct_Ptr);
                 NativeMemory.Free(x64CacheBlocksStructs);
+                NativeMemory.Free(GuestMemory);
+
                 ExecutableMemoryBase = null;
                 AddressOfNextBlock = null;
                 CPU_Struct_Ptr = null;
                 x64CacheBlocksStructs = null;
                 RegisterTransfare = null;
+                GuestMemory = null;
+                Dispatcher = null;
+                StubBlock = null;
 
                 disposedValue = true;
                 Console.WriteLine("[NativeMemoryManager] Memory Freed Successfully!");
@@ -234,5 +218,30 @@ namespace PSXSharp.Core.x64_Recompiler {
             Dispose(true);
             GC.SuppressFinalize(this);
         }
+
+
+
+        /*private void UnlinkAllBlocks(x64CacheBlocksStruct* cacheBlocks) {
+            x64CacheBlockInternalStruct* bios = &cacheBlocks->BIOS_CacheBlocks[0];
+            x64CacheBlockInternalStruct* ram = &cacheBlocks->RAM_CacheBlocks[0];
+
+            uint biosCount = (BIOS_SIZE >> 2);
+            uint ramCount = (CPU_x64_Recompiler.RAM_SIZE >> 2);
+
+            for (int i = 0; i < biosCount; i++) {
+                if (bios[i].IsCompiled == 1) {
+                    bios[i].IsCompiled = 0;
+                    bios[i].FunctionPointer = 0;
+                }
+            }
+
+            for (int i = 0; i < ramCount; i++) {
+                if (ram[i].IsCompiled == 1) {
+                    ram[i].IsCompiled = 0;
+                    ram[i].FunctionPointer = 0;
+                }
+            }
+        }*/
+
     }
 }

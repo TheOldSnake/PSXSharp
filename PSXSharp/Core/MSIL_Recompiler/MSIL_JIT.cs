@@ -18,8 +18,8 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         private static FieldInfo? DelayedWrite = typeof(CPU_MSIL_Recompiler).GetField("DelayedRegisterLoad");     //For memory access
         private static FieldInfo? ReadyWrite = typeof(CPU_MSIL_Recompiler).GetField("ReadyRegisterLoad");        //LWL/LWR Need to access it
 
-        private static FieldInfo? RegisterNumber = typeof(CPU_MSIL_Recompiler.RegisterLoad).GetField("RegisterNumber");
-        private static FieldInfo? Value = typeof(CPU_MSIL_Recompiler.RegisterLoad).GetField("Value");
+        private static FieldInfo? RegisterNumber = typeof(CPU.RegisterLoad).GetField("RegisterNumber");
+        private static FieldInfo? Value = typeof(CPU.RegisterLoad).GetField("Value");
 
         private static FieldInfo? COP0 = typeof(CPU_MSIL_Recompiler).GetField("Cop0");
         private static FieldInfo? COP0_SR = typeof(CPU_MSIL_Recompiler.COP0).GetField("SR");
@@ -1249,17 +1249,17 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         public static void EmitRegisterTransfare(MSILCacheBlock cache) {
             ILGenerator il = cache.IL_Emitter;
 
-            /*Label skip = il.DefineLabel();
+            Label skip = il.DefineLabel();
 
             LocalBuilder regNumber = il.DeclareLocal(typeof(uint));
             LocalBuilder regValue = il.DeclareLocal(typeof(uint));
 
             //////////////////////////////////////////////////////////////////////////
-            *//*
-             if (cpu.ReadyRegisterLoad.RegisterNumber != cpu.DelayedRegisterLoad.RegisterNumber) {
+            
+             /*if (cpu.ReadyRegisterLoad.RegisterNumber != cpu.DelayedRegisterLoad.RegisterNumber) {
                 cpu.GPR[cpu.ReadyRegisterLoad.RegisterNumber] = cpu.ReadyRegisterLoad.Value;
-            }
-             *//*
+            }*/
+             
 
             il.Emit(OpCodes.Ldarg, 0);                   //Load CPU object reference
             il.Emit(OpCodes.Ldflda, DelayedWrite);       //Load the address of the Delayed Write field from that cpu object in the stack 
@@ -1288,10 +1288,10 @@ namespace PSXSharp.Core.MSIL_Recompiler {
             
             il.MarkLabel(skip);                 
 
-            *//*
+            /*
                 cpu.ReadyRegisterLoad.Value = cpu.DelayedRegisterLoad.Value;
                 cpu.ReadyRegisterLoad.RegisterNumber = cpu.DelayedRegisterLoad.RegisterNumber;    
-            *//*
+            */
 
             il.Emit(OpCodes.Ldarg, 0);                   //Load CPU object reference
             il.Emit(OpCodes.Ldflda, ReadyWrite);         //Load the address of the Ready Write field from that cpu object in the stack 
@@ -1309,10 +1309,10 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
             //////////////////////////////////////////////////////////////////////////
 
-            *//*
+            /*
              cpu.DelayedRegisterLoad.Value = 0;
              cpu.DelayedRegisterLoad.RegisterNumber = 0;
-             *//*
+             */
 
             il.Emit(OpCodes.Ldarg, 0);                   //Load CPU object reference
             il.Emit(OpCodes.Ldflda, DelayedWrite);       //Load the address of the Ready Write field from that cpu object in the stack 
@@ -1325,12 +1325,12 @@ namespace PSXSharp.Core.MSIL_Recompiler {
             il.Emit(OpCodes.Stfld, RegisterNumber);
 
             //////////////////////////////////////////////////////////////////////////
-            *//*
+            /*
               //Last step is direct register write, so it can overwrite any memory load on the same register
                 cpu.GPR[cpu.DirectWrite.RegisterNumber] = cpu.DirectWrite.Value;
                 cpu.DirectWrite.RegisterNumber = 0;
                 cpu.DirectWrite.Value = 0;
-            *//*
+            */
 
             il.Emit(OpCodes.Ldarg, 0);
             il.Emit(OpCodes.Ldfld, GPR);
@@ -1347,11 +1347,11 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
             //////////////////////////////////////////////////////////////////////////
 
-            *//*
+            /*
                 cpu.DirectWrite.RegisterNumber = 0;
                 cpu.DirectWrite.Value = 0;
                 cpu.GPR[0] = 0;
-             *//*
+             */
 
             il.Emit(OpCodes.Ldarg, 0);                   //Load CPU object reference
             il.Emit(OpCodes.Ldflda, DirectWrite);        //Load the address of the Ready Write field from that cpu object in the stack 
@@ -1365,18 +1365,18 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
             //////////////////////////////////////////////////////////////////////////
 
-            *//*
+            /*
                cpu.GPR[0] = 0;
-            *//*
+            */
 
             il.Emit(OpCodes.Ldarg, 0);
             il.Emit(OpCodes.Ldfld, GPR);
             il.Emit(OpCodes.Ldc_I4, 0);
             il.Emit(OpCodes.Ldc_I4, 0);
-            il.Emit(OpCodes.Stelem_I4);*/
+            il.Emit(OpCodes.Stelem_I4);
 
-            il.Emit(OpCodes.Ldarg, 0);
-            il.Emit(OpCodes.Call, RegisterTransfareMeth);
+            //il.Emit(OpCodes.Ldarg, 0);
+            //il.Emit(OpCodes.Call, RegisterTransfareMeth);
         }
 
         public static void EmitBranchDelayHandler(MSILCacheBlock cache) {
@@ -1390,7 +1390,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
              */
 
             //cpu.DelaySlot = cpu.Branch;   //Branch delay 
-            /*il.Emit(OpCodes.Ldarg, 0);  
+            il.Emit(OpCodes.Ldarg, 0);  
             il.Emit(OpCodes.Ldarg, 0);
             il.Emit(OpCodes.Ldfld, BranchBool);
             il.Emit(OpCodes.Stfld, DelaySlotBool);
@@ -1412,10 +1412,10 @@ namespace PSXSharp.Core.MSIL_Recompiler {
             il.Emit(OpCodes.Ldfld, Next_PC);
             il.Emit(OpCodes.Ldc_I4, 4);
             il.Emit(OpCodes.Add);
-            il.Emit(OpCodes.Stfld, Next_PC);*/
+            il.Emit(OpCodes.Stfld, Next_PC);
 
-            il.Emit(OpCodes.Ldarg, 0);
-            il.Emit(OpCodes.Call, BranchDelayMeth);
+            //il.Emit(OpCodes.Ldarg, 0);
+            //il.Emit(OpCodes.Call, BranchDelayMeth);
         }
 
         public static void EmitSavePC(MSILCacheBlock cache) {
@@ -1631,6 +1631,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         public uint Address;        
         public uint Total;
+        public uint Cycles;
         public uint Checksum;
         public bool IsCompiled;
 
@@ -1654,10 +1655,10 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         public void Compile() {
             FunctionPointer = (Instruction)FunctionBlock.CreateDelegate(typeof(Instruction));
             IsCompiled = true;
-            if (IL_Emitter.ILOffset >= 15 * 1024) {
+            /*if (IL_Emitter.ILOffset >= 15 * 1024) {
                 Console.WriteLine("[JIT] Warning Buffer Resize: " + IL_Emitter.ILOffset);
                 Console.WriteLine("[JIT] Total: " + Total);
-            }
+            }*/
         }
     }
 }

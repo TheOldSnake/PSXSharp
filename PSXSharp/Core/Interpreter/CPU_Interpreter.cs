@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using static PSXSharp.Core.CPU;
 
 namespace PSXSharp.Core.Interpreter {
     public unsafe class CPU_Interpreter : CPU {
@@ -80,13 +81,7 @@ namespace PSXSharp.Core.Interpreter {
                 &illegal,   &illegal,   &illegal,   &illegal,   &illegal,   &illegal,   &illegal,   &illegal
         ];
 
-        
-        //To emulate load delay
-        public struct RegisterLoad {
-            public uint RegisterNumber;
-            public uint Value;
-        }
-
+     
         public RegisterLoad ReadyRegisterLoad;
         public RegisterLoad DelayedRegisterLoad;
         public RegisterLoad DirectWrite;       //Not memory access, will overwrite memory loads
@@ -131,6 +126,9 @@ namespace PSXSharp.Core.Interpreter {
                     return;
                  }
              }
+            if (PC == 0xA0 && GPR[9] == 0x44) {
+                Console.WriteLine("Flush Cache");
+            }
 
             //PC must be 32 bit aligned, can be ignored?
             if ((Current_PC & 0x3) != 0) {
@@ -1200,6 +1198,21 @@ namespace PSXSharp.Core.Interpreter {
             double returnValue = (CyclesDone / CYCLES_PER_SECOND) * 100;
             CyclesDone = 0;
             return returnValue;
+        }
+
+        public void SetInvalidAllRAMBlocks() {
+            //Unsupported
+            return;
+        }
+
+        public void SetInvalidRAMBlock(uint block) {
+            //Unsupported
+            return;
+        }
+
+        public void SetInvalidAllBIOSBlocks() {
+            //Unsupported
+            return;
         }
     }
 }
