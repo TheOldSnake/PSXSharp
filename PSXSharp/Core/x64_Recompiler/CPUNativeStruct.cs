@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using static PSXSharp.Core.CPU;
 
 namespace PSXSharp.Core.x64_Recompiler {
 
@@ -11,17 +12,15 @@ namespace PSXSharp.Core.x64_Recompiler {
             public uint Current_PC;                     //Offset = [136]
             public uint HI;                             //Offset = [140]
             public uint LO;                             //Offset = [144]
-            public uint ReadyRegisterLoad_Number;       //Offset = [148]
-            public uint ReadyRegisterLoad_Value;        //Offset = [152]
-            public uint DelayedRegisterLoad_Number;     //Offset = [156]
-            public uint DelayedRegisterLoad_Value;      //Offset = [160]
-            public uint DirectWrite_Number;             //Offset = [164]
-            public uint DirectWrite_Value;              //Offset = [168]
-            public uint Branch;                         //Offset = [172]
-            public uint DelaySlot;                      //Offset = [176]
-            public uint COP0_SR;                        //Offset = [180]
-            public uint COP0_Cause;                     //Offset = [184]
-            public uint COP0_EPC;                       //Offset = [188]
+            public uint Padding;                        //Offset = [148] --> 4 bytes Padding 
+            public RegisterLoad ReadyLoad;              //Offset = [152] --> Size = 4*2 = 8 bytes
+            public RegisterLoad DelayedLoad;            //Offset = [160] --> Size = 4*2 = 8 bytes
+            public RegisterLoad DirectLoad;             //Offset = [168] --> Size = 4*2 = 8 bytes         
+            public uint Branch;                         //Offset = [176]
+            public uint DelaySlot;                      //Offset = [180]
+            public uint COP0_SR;                        //Offset = [184]
+            public uint COP0_Cause;                     //Offset = [188]
+            public uint COP0_EPC;                       //Offset = [192]
         }
 
         [InlineArray(32)]

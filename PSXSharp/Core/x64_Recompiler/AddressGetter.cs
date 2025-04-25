@@ -30,27 +30,27 @@
         }
 
         public static ulong GetReadyRegisterLoadNumberAddress() {
-            return (ulong)&CPU_Struct_Ptr->ReadyRegisterLoad_Number;
+            return (ulong)&CPU_Struct_Ptr->ReadyLoad.RegisterNumber;
         }
 
         public static ulong GetReadyRegisterLoadValueAddress() {
-            return (ulong)&CPU_Struct_Ptr->ReadyRegisterLoad_Value;
+            return (ulong)&CPU_Struct_Ptr->ReadyLoad.Value;
         }
 
         public static ulong GetDelayedRegisterLoadNumberAddress() {
-            return (ulong)&CPU_Struct_Ptr->DelayedRegisterLoad_Number;
+            return (ulong)&CPU_Struct_Ptr->DelayedLoad.RegisterNumber;
         }
 
         public static ulong GetDelayedRegisterLoadValueAddress() {
-            return (ulong)&CPU_Struct_Ptr->DelayedRegisterLoad_Value;
+            return (ulong)&CPU_Struct_Ptr->DelayedLoad.Value;
         }
 
         public static ulong GetDirectWriteNumberAddress() {
-            return (ulong)&CPU_Struct_Ptr->DirectWrite_Number;
+            return (ulong)&CPU_Struct_Ptr->DirectLoad.RegisterNumber;
         }
 
         public static ulong GetDirectWriteValueAddress() {
-            return (ulong)&CPU_Struct_Ptr->DirectWrite_Value;
+            return (ulong)&CPU_Struct_Ptr->DirectLoad.Value;
         }
 
         public static ulong GetBranchFlagAddress() {
@@ -73,42 +73,16 @@
             return (ulong)&CPU_Struct_Ptr->COP0_EPC;
         }
 
-        public static ulong GetBIOSCacheBlockAddress() {
-            return (ulong)&x64CacheBlocksStructs->BIOS_CacheBlocks;
-        }
-
-        public static ulong GetRAMCacheBlockAddress() {
-            return (ulong)&x64CacheBlocksStructs->RAM_CacheBlocks;
-        }
-
-        public static ulong GetGetBlockAddress() {
-            delegate* unmanaged[Stdcall]<uint*, ulong> ptr = &GetNativeBlock;
+        public static ulong GetStubBlockHandlerAddress() {
+            delegate* unmanaged[Stdcall]<ulong> ptr = &StubBlockHandler;
             return (ulong)ptr;
-        }
-
-        public static ulong GetNeedsRecompilationAddress() {
-            delegate* unmanaged[Stdcall]<x64CacheBlockInternalStruct*, uint*, uint> ptr = &NeedsRecompilation;
-            return (ulong)ptr;
-        }
-
-        public static ulong GetRecompileBlockAddress() {
-            delegate* unmanaged[Stdcall]<x64CacheBlockInternalStruct*, uint*, void> ptr = &RecompileInJIT;
-            return (ulong)ptr;
-        }
-
-        public static ulong GetInvalidateBlockAddress() {
-            delegate* unmanaged[Stdcall]<x64CacheBlockInternalStruct*, uint> ptr = &InvalidateRAM_Block;
-            return (ulong)ptr;
-        }
-
-        public static ulong GetRegisterTransfareAddress() {
-            return (ulong)NativeMemoryManager.RegisterTransfare;
         }
 
         public static ulong GetExceptionAddress() {
             delegate* unmanaged[Stdcall]<CPUNativeStruct*, uint, void> ptr = &ExceptionWrapper;
             return (ulong)ptr;
         }
+
         public static ulong GetIRQCheckAddress() {
             delegate* unmanaged[Stdcall]<void> ptr = &CheckIRQInJIT;
             return (ulong)ptr;
@@ -168,5 +142,25 @@
             delegate* unmanaged[Stdcall]<uint, void> ptr = &Print;
             return (ulong)ptr;
         }
+
+
+
+        //For assembly dispatcher -unused-
+        /*public static ulong GetBIOSCacheBlockAddress() {
+            return (ulong)&x64CacheBlocksStructs->BIOS_CacheBlocks;
+        }
+
+        public static ulong GetRAMCacheBlockAddress() {
+            return (ulong)&x64CacheBlocksStructs->RAM_CacheBlocks;
+        }
+
+        public static ulong GetRecompileBlockAddress() {
+            delegate* unmanaged[Stdcall]<x64CacheBlockInternalStruct*, uint*, void> ptr = &RecompileInJIT;
+            return (ulong)ptr;
+        }
+
+        public static ulong GetRegisterTransfareAddress() {
+            return (ulong)NativeMemoryManager.RegisterTransfare;
+        }*/
     }
 }

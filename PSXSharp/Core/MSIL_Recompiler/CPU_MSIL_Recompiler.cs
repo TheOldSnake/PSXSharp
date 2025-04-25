@@ -1,11 +1,13 @@
 ﻿using PSXSharp.Core;
 using PSXSharp.Core.Common;
 using PSXSharp.Core.MSIL_Recompiler;
+using PSXSharp.Core.x64_Recompiler;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using static PSXSharp.Core.CPU;
 
 namespace PSXSharp {
     public unsafe partial class CPU_MSIL_Recompiler : CPU {
@@ -62,11 +64,6 @@ namespace PSXSharp {
         bool FastBoot = false;                  //Skips the boot animation 
         List<byte> Chars = new List<byte>();    //Temporarily stores characters 
       
-        //To emulate load delay
-        public struct RegisterLoad {
-            public uint RegisterNumber;
-            public uint Value;
-        }
 
         public RegisterLoad ReadyRegisterLoad;
         public RegisterLoad DelayedRegisterLoad;
@@ -83,7 +80,7 @@ namespace PSXSharp {
         public const uint BIOS_SIZE = 512 * 1024;        //512 KB
         public const uint RAM_SIZE = 2 * 1024 * 1024;    //2 MB
 
-        bool IsReadingFromBIOS => BUS.BIOS.range.Contains(BUS.Mask(PC));
+        bool IsReadingFromBIOS => (PC & 0x1FFFFFFF) >= BIOS_START;
 
         public CPU_MSIL_Recompiler(bool isEXE, string? EXEPath, BUS bus) {
             PC = 0xbfc00000;                   //BIOS initial PC       
@@ -125,29 +122,17 @@ namespace PSXSharp {
         }
 
         public int emu_cycle() {
-            /*Intercept(PC);
-
-            if (PC == 0x80030000) {
-                if (IsLoadingEXE) {
-                    IsLoadingEXE = false;
-                    loadTestRom(EXEPath);
-                    StartOfBlock = true;
-
-                } else if (FastBoot && BUS.CDROM.DataController.Disk != null) {                   
-                    Current_PC = PC = GPR[(int)Register.ra];
-                    Next_PC = PC + 4;
-                    ReadyRegisterLoad.Value = 0;
-                    ReadyRegisterLoad.RegisterNumber = 0;
-                    DelayedRegisterLoad = ReadyRegisterLoad;
-                    StartOfBlock = true;
-                    FastBoot = false;
+            if (PC == 0xbfc01920) {
+                for (uint i = 0; i < RAM_CacheBlocks.Length; i++) {
+                    RAM_CacheBlocks[i].IsCompiled = false;
                 }
-            }*/
+            }
 
-            bool isBios = IsReadingFromBIOS;
+            bool isBios = (PC & 0x1FFFFFFF) >= BIOS_START;
             uint block = GetBlockAddress(PC, isBios);
-            if (IsInvalidBlock(block, isBios)) {
-                //Recompile
+            MSILCacheBlock[] currentCache = isBios ? BIOS_CacheBlocks : RAM_CacheBlocks;
+
+            if (!currentCache[block].IsCompiled) {
                 Recompile(block, PC, isBios);
             }
 
@@ -156,21 +141,37 @@ namespace PSXSharp {
 
         private int Recompile(uint block, uint pc, bool isBios) {
             Instruction instruction = new Instruction();
-            
-            uint temp = pc;
+            int cycleMultiplier;
+            uint maskedAddress = pc & 0x1FFFFFFF;
             bool end = false;
-            MSILCacheBlock[] currentCache = isBios ? BIOS_CacheBlocks : RAM_CacheBlocks;
+            MSILCacheBlock[] currentCache;
+            ReadOnlySpan<byte> rawMemory;
+
+            if (isBios) {
+                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.GetMemoryReference()).Slice((int)(maskedAddress - BIOS_START));
+                currentCache = BIOS_CacheBlocks;
+                cycleMultiplier = 22;
+            } else {
+                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice((int)maskedAddress);
+                currentCache = RAM_CacheBlocks;
+                cycleMultiplier = 2;
+            }
+
             CurrentBlock = currentCache[block];
             CurrentBlock.Init(pc);
 
+            ReadOnlySpan<uint> instructionsSpan = MemoryMarshal.Cast<byte, uint>(rawMemory);
+            int instructionIndex = 0;
+
             for (;;) {
-                instruction.FullValue = BUS.LoadWord(temp);
-                temp += 4;
+                instruction.FullValue = instructionsSpan[instructionIndex++];
                 EmitInstruction(instruction);
 
                 //We end the block if any of these conditions is true
                 //Note that syscall and break are immediate exceptions and they don't have delay slot
                 if (end || CurrentBlock.Total >= 127 || IsSyscallOrBreak(instruction)) {
+                    CurrentBlock.Total = (uint)instructionIndex;
+                    CurrentBlock.Cycles = (uint)(CurrentBlock.Total * cycleMultiplier);
                     MSIL_JIT.EmitRet(CurrentBlock);
                     CurrentBlock.Compile();
                     currentCache[block] = CurrentBlock;
@@ -185,25 +186,10 @@ namespace PSXSharp {
         }
 
         private int RunJIT(uint block, bool isBios) {
-            if (BUS.debug) {
-                Console.WriteLine("[JIT]: " + PC.ToString("x"));
-            }
-
-            MSILCacheBlock[] currentCache;
+            MSILCacheBlock[] currentCache = isBios? BIOS_CacheBlocks : RAM_CacheBlocks;
             int totalCycles = 0;
-            int cycleMultiplier = 0;
-
-            if (isBios) {
-                currentCache = BIOS_CacheBlocks;
-                cycleMultiplier = 22;
-            } else {
-                currentCache = RAM_CacheBlocks;
-                cycleMultiplier = 2;
-            }
-
             currentCache[block].FunctionPointer(this);
-            totalCycles = (int)((currentCache[block].Total * cycleMultiplier) + BUS.GetBusCycles());
-
+            totalCycles = (int)(currentCache[block].Cycles + BUS.GetBusCycles());
             return totalCycles;
         }
 
@@ -230,7 +216,7 @@ namespace PSXSharp {
         }
 
         private uint GetBlockAddress(uint address, bool biosBlock) {
-            address = BUS.Mask(address);
+            address &= 0x1FFFFFFF;
             if (biosBlock) {
                 address -= BIOS_START;
             } else {
@@ -242,7 +228,7 @@ namespace PSXSharp {
         private bool InvalidateRAM_Block(uint block) {  //For RAM Blocks only
             uint address = BUS.Mask(RAM_CacheBlocks[block].Address);
             uint numberOfInstructions = RAM_CacheBlocks[block].Total;
-            ReadOnlySpan<byte> rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryReference()).Slice((int)address, (int)(numberOfInstructions * 4));
+            ReadOnlySpan<byte> rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice((int)address, (int)(numberOfInstructions * 4));
             ReadOnlySpan<uint> instructionsSpan = MemoryMarshal.Cast<byte, uint>(rawMemory);
 
             uint memoryChecksum = 0;
@@ -502,6 +488,21 @@ namespace PSXSharp {
             double returnValue = (CyclesDone / CYCLES_PER_SECOND) * 100;
             CyclesDone = 0;
             return returnValue;
+        }
+
+        public void SetInvalidAllRAMBlocks() {
+            //TODO
+            throw new NotImplementedException();
+        }
+
+        public void SetInvalidRAMBlock(uint block) {
+            //TODO
+            throw new NotImplementedException();
+        }
+
+        public void SetInvalidAllBIOSBlocks() {
+            //TODO
+            return;
         }
     }
 }

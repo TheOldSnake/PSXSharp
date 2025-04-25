@@ -1,4 +1,5 @@
-﻿using PSXSharp.Peripherals.IO;
+﻿using PSXSharp.Core.x64_Recompiler;
+using PSXSharp.Peripherals.IO;
 using PSXSharp.Peripherals.MDEC;
 using PSXSharp.Peripherals.Timers;
 using System;
@@ -68,12 +69,10 @@ namespace PSXSharp {
 
         public uint LoadWord(uint address) {           
             uint physicalAddress = Mask(address);
-      
+            BUS_Cycles++;
 
             switch (physicalAddress) {
-                case uint when RAM.range.Contains(physicalAddress): 
-                    BUS_Cycles++; 
-                    return RAM.LoadWord(physicalAddress);
+                case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadWord(physicalAddress);
                 case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadWord(physicalAddress);
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): return IRQ_CONTROL.Read(physicalAddress);
                 case uint when DMA.range.Contains(physicalAddress): return DMA.ReadWord(physicalAddress);
@@ -99,15 +98,15 @@ namespace PSXSharp {
 
         public void StoreWord(uint address,uint value) {
             uint physicalAddress = Mask(address);
-            //BUS_Cycles++;
+            BUS_Cycles++;
 
             switch (physicalAddress) {
-                case uint when RAM.range.Contains(physicalAddress): RAM.StoreWord(physicalAddress, value); break;
+                case uint when RAM.Range.Contains(physicalAddress): RAM.StoreWord(physicalAddress, value); break;
                 case uint when RamSize.range.Contains(physicalAddress): RamSize.StoreWord(value); break;
                 case uint when MemoryControl.range.Contains(physicalAddress): MemoryControl.Write(physicalAddress, value); break;
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): IRQ_CONTROL.Write(physicalAddress, (ushort)value); break; //Cast? could be wrong
                 case uint when GPU.Range.Contains(physicalAddress): GPU.StoreWord(physicalAddress, value); break;
-                case uint when CacheControl.range.Contains(physicalAddress): break; //...?
+                case uint when CacheControl.Range.Contains(physicalAddress): CacheControl.WriteWord(address, value); break;
                 case uint when Timer0.Range.Contains(physicalAddress): Timer0.Write(physicalAddress, value); break;    
                 case uint when Timer1.Range.Contains(physicalAddress): Timer1.Write(physicalAddress, value); break;
                 case uint when Timer2.Range.Contains(physicalAddress): Timer2.Write(physicalAddress, value); break;
@@ -135,12 +134,10 @@ namespace PSXSharp {
 
         public ushort LoadHalf(uint address) {
             uint physicalAddress = Mask(address);
-
+            BUS_Cycles++;
 
             switch (physicalAddress) {
-                case uint when RAM.range.Contains(physicalAddress): 
-                    BUS_Cycles++; 
-                    return RAM.LoadHalf(physicalAddress);
+                case uint when RAM.Range.Contains(physicalAddress): return RAM.LoadHalf(physicalAddress);
                 case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadHalf(physicalAddress);
                 case uint when SPU.range.Contains(physicalAddress): return SPU.LoadHalf(physicalAddress);
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): return (ushort)IRQ_CONTROL.Read(physicalAddress);
@@ -164,10 +161,10 @@ namespace PSXSharp {
 
         public void StoreHalf(uint address, ushort value) {
             uint physicalAddress = Mask(address);
-            //BUS_Cycles++;
+            BUS_Cycles++;
 
             switch (physicalAddress) {
-                case uint when RAM.range.Contains(physicalAddress): RAM.StoreHalf(physicalAddress, value); break;
+                case uint when RAM.Range.Contains(physicalAddress): RAM.StoreHalf(physicalAddress, value); break;
                 case uint when SPU.range.Contains(physicalAddress): SPU.StoreHalf(physicalAddress, value); break;
                 case uint when Timer0.Range.Contains(physicalAddress): Timer0.Write(physicalAddress, value); break;
                 case uint when Timer1.Range.Contains(physicalAddress): Timer1.Write(physicalAddress, value); break;
@@ -196,12 +193,10 @@ namespace PSXSharp {
 
         public byte LoadByte(uint address) {
             uint physicalAddress = Mask(address);
-
+            BUS_Cycles++;
 
             switch (physicalAddress) {
-                case uint when RAM.range.Contains(physicalAddress): 
-                    BUS_Cycles++; 
-                    return RAM.LoadByte(physicalAddress);
+                case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadByte(physicalAddress);
                 case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadByte(physicalAddress);
                 case uint when CDROM.range.Contains(physicalAddress): return CDROM.LoadByte(physicalAddress);
                 case uint when DMA.range.Contains(physicalAddress): return DMA.LoadByte(physicalAddress);
@@ -223,10 +218,10 @@ namespace PSXSharp {
 
         public void StoreByte(uint address, byte value) {
             uint physicalAddress = Mask(address);
-            //BUS_Cycles++;
+            BUS_Cycles++;
 
             switch (physicalAddress) {
-                case uint when RAM.range.Contains(physicalAddress): RAM.StoreByte(physicalAddress, value); break;
+                case uint when RAM.Range.Contains(physicalAddress): RAM.StoreByte(physicalAddress, value); break;
                 case uint when Scratchpad.range.Contains(physicalAddress): Scratchpad.StoreByte(physicalAddress, value); break;
                 case uint when CDROM.range.Contains(physicalAddress): CDROM.StoreByte(physicalAddress, value); break;
                 case uint when DMA.range.Contains(physicalAddress): DMA.StoreByte(physicalAddress, value); break;
@@ -247,7 +242,7 @@ namespace PSXSharp {
         public uint GetBusCycles() {
             uint numberOfCycles = BUS_Cycles;
             BUS_Cycles = 0;
-            return (uint)(BUS_Cycles * RamSize.RamReadDelay);
+            return 0;
         }
 
         public uint Mask(uint address) { 
@@ -373,10 +368,10 @@ namespace PSXSharp {
             if (((DMA.ch_irq_en >> (int)ch.get_portnum()) & 1) == 1) {
                 DMA.ch_irq_flags |= (byte)(1 << (int)ch.get_portnum());
             }
+
             if (DMA.IRQRequest() == 1) {
                 IRQ_CONTROL.IRQsignal(3);   //Instant IRQ may cause problems
             };
-
         }
 
         public void Tick(int cycles) {
@@ -387,8 +382,14 @@ namespace PSXSharp {
             GPU.Tick(cycles * GPU_FACTOR);
             CDROM.tick(cycles);
             JOY_IO.Tick(cycles);
-            SerialIO1.Tick(cycles); 
+            SerialIO1.Tick(cycles);
         }
+
+        public class DMAIRQ {
+            public int WaitCycles;
+            public uint Channel;
+        }
+
     }
 }
 
