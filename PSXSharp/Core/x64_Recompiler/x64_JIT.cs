@@ -1095,8 +1095,17 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.mov(__dword_ptr[rbx + CurrentPCOffset], eax);
         }
 
-        public static void TerminateBlock(Assembler asm, ref Label endOfBlock) { 
-            asm.ret();
+        public static void EmitBlockEntry(Assembler asm) {
+            EmitSaveNonVolatileRegisters(asm);          //Store callee-saved regs on stack 
+            asm.mov(rbp, rsp);                          //Copy stack pointer
+            asm.sub(rsp, 40);                           //Prepare shadow space
+            asm.mov(rbx, GetCPUStructAddress());        //Pre load base CPU pointer
+        }
+
+        public static void TerminateBlock(Assembler asm, ref Label endOfBlock) {
+            asm.add(rsp, 40);                               //Undo shadow space
+            EmitRestoreNonVolatileRegisters(asm);           //Restore callee-saved regs
+            asm.ret();                                      //Return
             asm.Label(ref endOfBlock);
             asm.nop();                      //This nop will not be included, but we need an instruction to define a label
         }

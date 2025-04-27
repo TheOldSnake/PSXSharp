@@ -201,11 +201,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             int instructionIndex = 0;
 
-            //Emit save regs on block entry
-            x64_JIT.EmitSaveNonVolatileRegisters(emitter);
-            emitter.mov(rbp, rsp);                          //Copy stack pointer
-            emitter.sub(rsp, 40);                           //Prepare shadow space
-            emitter.mov(rbx, (ulong)CPU_Struct_Ptr);        //Pre load base cpu pointer
+            x64_JIT.EmitBlockEntry(emitter);
 
             for (;;) {
                 instruction.FullValue = instructionsSpan[instructionIndex++];
@@ -222,9 +218,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
                 if (end || CurrentBlock.TotalMIPS_Instructions > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {
                     CurrentBlock.TotalMIPS_Instructions = (uint)instructionIndex;
-                    CurrentBlock.TotalCycles = CurrentBlock.TotalMIPS_Instructions * cyclesPerInstruction;
-                    emitter.add(rsp, 40);                               //Undo shadow space
-                    x64_JIT.EmitRestoreNonVolatileRegisters(emitter);
+                    CurrentBlock.TotalCycles = CurrentBlock.TotalMIPS_Instructions * cyclesPerInstruction;                  
                     x64_JIT.TerminateBlock(emitter, ref endOfBlock);
                     AssembleAndLinkPointer(emitter, ref endOfBlock, ref CurrentBlock);
                     currentCache[block] = CurrentBlock;
