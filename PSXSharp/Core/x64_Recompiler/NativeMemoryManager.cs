@@ -34,6 +34,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         //Keeps a list of invalid blocks that were allocated to a new memory
         //to use their old space
         private List<(ulong address, int size)> InvalidBlocks;
+        private bool IsInvalidBlocksSorted = true;
         private int InvalidBlocksTotalSize = 0;
 
         //Precompiled RegisterTransfare Function
@@ -67,6 +68,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             NativeMemory.Clear(x64CacheBlocksStructs, (nuint)sizeof(x64CacheBlocksStruct));
             NativeMemory.Clear(ExecutableMemoryBase, SIZE_OF_EXECUTABLE_MEMORY);
             AddressOfNextBlock = ExecutableMemoryBase;
+            InvalidBlocks.Clear();
             Console.WriteLine("[NativeMemoryManager] Memory Cleared");
         }
 
@@ -114,8 +116,10 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public delegate* unmanaged[Stdcall]<void> WriteExecutableBlock(ref Span<byte> block, byte* oldPointer, int oldSize) {
             delegate* unmanaged[Stdcall] <void> function;
+            int blockLength = block.Length;
 
-            if (!HasEnoughMemory(block.Length)) {
+            //Ensure that we have enough memory
+            if (!HasEnoughMemory(blockLength)) {
                 //Easiest solution: nuke Everything and start over
                 //No need to call NativeMemory.Clear, we just reset the pointers and unlink the blocks.
                 AddressOfNextBlock = ExecutableMemoryBase;
@@ -128,16 +132,16 @@ namespace PSXSharp.Core.x64_Recompiler {
             }
           
             //Copy code to the next block address
-            //We need to fix the pointer to managed memory
+            //Fix the pointer to managed memory
             fixed (byte* blockPtr = &block[0]) {          
-                NativeMemory.Copy(blockPtr, AddressOfNextBlock, (nuint)block.Length);
+                NativeMemory.Copy(blockPtr, AddressOfNextBlock, (nuint)blockLength);
             }
 
             //Cast to delegate*
             function = (delegate* unmanaged[Stdcall]<void>)AddressOfNextBlock;
 
             //Update the address for the incoming blocks
-            AddressOfNextBlock += block.Length;
+            AddressOfNextBlock += blockLength;
             AddressOfNextBlock = Align(AddressOfNextBlock, 16);
 
             return function;
@@ -148,29 +152,47 @@ namespace PSXSharp.Core.x64_Recompiler {
             return (byte*)((addressValue + (bytes - 1)) & ~(bytes - 1));
         }
 
-        //Unused.. TODO?
         private byte* BestFit(int size) {
-            if (InvalidBlocks.Count > 0) {
+            if (InvalidBlocks.Count == 0) {
+                return null;
+            }
+
+            if (!IsInvalidBlocksSorted) {
                 InvalidBlocks.Sort((a, b) => a.size.CompareTo(b.size)); //Sort by size (ascending)
-                for (int i = 0; i < InvalidBlocks.Count; i++) {
-                    if (InvalidBlocks[i].size >= size) {
-                        ulong allocatedBlock = InvalidBlocks[i].address;
+                IsInvalidBlocksSorted = true;
+            }
 
-                        //If the block is larger, split it and keep the remainder
-                        if (InvalidBlocks[i].size > size) {
-                            InvalidBlocks[i] = (InvalidBlocks[i].address + (uint)size, InvalidBlocks[i].size - size);
-                            InvalidBlocksTotalSize -= size;
-                        } else {
-                            //Exact fit, remove the block from the free list
-                            InvalidBlocksTotalSize -= InvalidBlocks[i].size;
-                            InvalidBlocks.RemoveAt(i);
-                        }
+            for (int i = 0; i < InvalidBlocks.Count; i++) {
+                if (InvalidBlocks[i].size >= size) {
+                    ulong allocatedBlock = InvalidBlocks[i].address;
 
-                        return (byte*)allocatedBlock;
+                    //If the block is larger, split it and keep the remainder
+                    if (InvalidBlocks[i].size > size) {
+                        InvalidBlocks[i] = (InvalidBlocks[i].address + (uint)size, InvalidBlocks[i].size - size);
+                        InvalidBlocksTotalSize -= size;
+                    } else {
+                        //Exact fit, remove the block from the free list
+                        InvalidBlocksTotalSize -= InvalidBlocks[i].size;
+                        InvalidBlocks.RemoveAt(i);
                     }
+
+                    return (byte*)allocatedBlock;
                 }
             }
+
             return null;
+        }
+
+        public void MarkFree(ulong address, int sizeInBytes) {
+            if (address == (ulong)StubBlockPointer || sizeInBytes == 0) {
+                //Don't add something that was never compiled
+                return;
+            }
+
+            //Mark the block as invalid and can be overwritten
+            InvalidBlocks.Add((address, sizeInBytes));
+            IsInvalidBlocksSorted = false;
+            InvalidBlocksTotalSize += sizeInBytes;
         }
 
         public bool HasEnoughMemory(int length) {
@@ -183,6 +205,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 if (disposing) {
                     // TODO: dispose managed state (managed objects)
                     Instance = null;
+                    InvalidBlocks.Clear();
                 }
 
                 //Free unmanaged resources (unmanaged objects) and override finalizer

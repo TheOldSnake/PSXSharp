@@ -171,7 +171,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             //This could still not work if the game patches the 
             //middle of a function then jumps to the beginning
         }
-        
+
         private static void Recompile(uint block, uint pc, bool isBios) {
             Instruction instruction = new Instruction();
             Assembler emitter = new Assembler(64);
