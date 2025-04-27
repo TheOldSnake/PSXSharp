@@ -382,7 +382,6 @@ namespace PSXSharp {
             GPU.Tick(cycles * GPU_FACTOR);
             CDROM.tick(cycles);
             JOY_IO.Tick(cycles);
-            SerialIO1.Tick(cycles);
         }
 
         public class DMAIRQ {
