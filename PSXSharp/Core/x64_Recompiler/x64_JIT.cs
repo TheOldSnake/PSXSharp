@@ -60,14 +60,12 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.add(rsp, 40);                       //Undo Shadow space 
         }
 
-        //Destroys r15!
         private static void EmitRegisterRead(Assembler asm, AssemblerRegister32 dst, int srcNumber) {
             //asm.mov(r15, GetGPRAddress(srcNumber));     //We use r15 ONLY for holding 64-bit addresses
             int regOffset = GPR_Offset + (srcNumber * 4);
             asm.mov(dst, __dword_ptr[rbx + regOffset]);
         }
 
-        //Destroys r15!
         private static void EmitRegisterWrite(Assembler asm, int dstNumber, AssemblerRegister32 src, bool delayed) {
             int regNumber_Offset;
             int regValue_Offset;
@@ -84,7 +82,6 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.mov(__dword_ptr[rbx + regValue_Offset], src);
         }
 
-        //Destroys eax!
         private static void EmitCheckCacheIsolation(Assembler asm) {
             //IscIsolateCache => (Cop0.SR & 0x10000) != 0
             asm.bt(__dword_ptr[rbx + COP0_SR_Offset], 16);       //BT = Bit Test, the CF flag contains the value of the selected bit
