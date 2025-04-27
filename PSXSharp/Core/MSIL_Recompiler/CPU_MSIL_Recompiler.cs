@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using static PSXSharp.Core.CPU;
 
 namespace PSXSharp {
@@ -122,12 +123,6 @@ namespace PSXSharp {
         }
 
         public int emu_cycle() {
-            if (PC == 0xbfc01920) {
-                for (uint i = 0; i < RAM_CacheBlocks.Length; i++) {
-                    RAM_CacheBlocks[i].IsCompiled = false;
-                }
-            }
-
             bool isBios = (PC & 0x1FFFFFFF) >= BIOS_START;
             uint block = GetBlockAddress(PC, isBios);
             MSILCacheBlock[] currentCache = isBios ? BIOS_CacheBlocks : RAM_CacheBlocks;
@@ -491,18 +486,19 @@ namespace PSXSharp {
         }
 
         public void SetInvalidAllRAMBlocks() {
-            //TODO
-            throw new NotImplementedException();
+            Parallel.For(0, RAM_CacheBlocks.Length, i => {
+                RAM_CacheBlocks[i].IsCompiled = false;
+            });
         }
 
         public void SetInvalidRAMBlock(uint block) {
-            //TODO
-            throw new NotImplementedException();
+            RAM_CacheBlocks[block].IsCompiled = false;
         }
 
         public void SetInvalidAllBIOSBlocks() {
-            //TODO
-            return;
+            Parallel.For(0, BIOS_CacheBlocks.Length, i => {
+                BIOS_CacheBlocks[i].IsCompiled = false;
+            });
         }
     }
 }
