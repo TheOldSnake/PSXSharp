@@ -255,7 +255,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //Pass the old pointer and size. We need them for best fit allocation of next blocks
             NativeMemoryManager manager = NativeMemoryManager.GetOrCreateMemoryManager();           //Get the instance, or make the instance static
-            block.FunctionPointer = manager.WriteExecutableBlock(ref emittedCode, (byte*)block.FunctionPointer, block.SizeOfAllocatedBytes);
+            block.FunctionPointer = manager.WriteExecutableBlock(ref emittedCode);
             block.SizeOfAllocatedBytes = emittedCode.Length;      //Update the size to the new one
             block.IsCompiled = true;
         }

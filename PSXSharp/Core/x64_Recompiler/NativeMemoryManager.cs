@@ -114,7 +114,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             return (delegate* unmanaged[Stdcall]<void>)StubBlock;
         }
 
-        public delegate* unmanaged[Stdcall]<void> WriteExecutableBlock(ref Span<byte> block, byte* oldPointer, int oldSize) {
+        public delegate* unmanaged[Stdcall]<void> WriteExecutableBlock(ref Span<byte> block) {
             delegate* unmanaged[Stdcall] <void> function;
             int blockLength = block.Length;
 
