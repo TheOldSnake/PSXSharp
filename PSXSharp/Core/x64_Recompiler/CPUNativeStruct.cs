@@ -21,6 +21,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             public uint COP0_SR;                        //Offset = [184]
             public uint COP0_Cause;                     //Offset = [188]
             public uint COP0_EPC;                       //Offset = [192]
+            public ulong CurrentCycle;                  //Offset = [200] --> Aligned 
         }
 
         [InlineArray(32)]

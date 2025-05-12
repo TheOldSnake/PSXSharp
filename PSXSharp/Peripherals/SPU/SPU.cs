@@ -1,4 +1,5 @@
 ﻿using NAudio.Wave;
+using PSXSharp.Core.x64_Recompiler;
 using PSXSharp.Peripherals.SPU;
 using System;
 using System.Runtime.InteropServices;
@@ -103,6 +104,7 @@ namespace PSXSharp {
 
         /* Default wave format: 44,1kHz, 16 bit, stereo */
 
+        public Action SPUCallback;
         public SPU(ref CDROMDataController CDControl) {
            voices = new Voice[24];
            for (int i = 0; i < voices.Length; i++) { 
@@ -113,8 +115,9 @@ namespace PSXSharp {
             bufferedWaveProvider.BufferDuration = new TimeSpan(0, 0, 0, 0, 300);
             waveOutEvent.Init(bufferedWaveProvider);
             this.CDDataControl = CDControl;
-
+            SPUCallback = SPUEvent;
         }
+
         public void StoreHalf(uint address, UInt16 value) {
             uint offset = address - range.start;
             switch (offset) {
@@ -522,6 +525,132 @@ namespace PSXSharp {
             }
         }
 
+        public void SPUEvent() {        
+            reverbCounter = (reverbCounter + 1) & 1;    //For half the frequency
+
+            uint edgeKeyOn = KON;
+            uint edgeKeyOff = KOFF;
+            KON = 0;
+            KOFF = 0;
+
+            sumLeft = 0;
+            sumRight = 0;
+            int reverbLeft = 0;
+            int reverbRight = 0;
+            int reverbLeft_Input = 0;
+            int reverbRight_Input = 0;
+            bool voiceHitAddress = false;
+
+            for (int i = 0; i < voices.Length; i++) {
+
+                if ((edgeKeyOn & (1 << i)) != 0) {
+                    voices[i].keyOn();
+                }
+
+                if ((edgeKeyOff & (1 << i)) != 0) {
+                    voices[i].keyOff();
+                }
+
+                if (voices[i].adsr.phase == Voice.ADSR.Phase.Off) {
+                    //voices[i].lastSample = 0;
+                    continue;
+                }
+
+                short sample = 0;
+
+                if ((NON & (1 << i)) == 0) {
+
+                    if (!voices[i].isLoaded) {
+                        voices[i].loadSamples(ref RAM, SPU_IRQ_Address);
+                        voices[i].decodeADPCM();
+                        voiceHitAddress = voiceHitAddress || voices[i].hit_IRQ_Address;
+                        voices[i].hit_IRQ_Address = false;
+                    }
+
+                    sample = voices[i].interpolate();
+                    modulatePitch(i);
+                    voices[i].checkSamplesIndex();
+                } else {
+                    Console.WriteLine("[SPU] Noise generator !"); //Haven't seen something use it yet
+                    voices[i].adsr.adsrVolume = 0;
+                    voices[i].lastSample = 0;
+                }
+
+                sample = (short)((sample * voices[i].adsr.adsrVolume) >> 15);
+                voices[i].adsr.ADSREnvelope();
+                voices[i].lastSample = sample;
+
+                sumLeft += (sample * voices[i].getVolumeLeft()) >> 15;
+                sumRight += (sample * voices[i].getVolumeRight()) >> 15;
+
+                if (((EON >> i) & 1) == 1) {   //Adding samples from any channel with active reverb
+                    reverbLeft_Input += (sample * voices[i].getVolumeLeft()) >> 15;
+                    reverbRight_Input += (sample * voices[i].getVolumeRight()) >> 15;
+                }
+
+            }
+
+            //Merge in CD-Audio (CD-DA and uncompressed XA-ADPCM), read one L/R sample each tick (tick rate is 44.1khz so it should match the sample rate)
+            //CD Samples are consumed even if CD audio is disabled, they will also end up in the capture buffer 
+            int cdSamples = CDDataControl.CDAudioSamples.Count;
+            short CDAudioLeft = 0;
+            short CDAudioRight = 0;
+            short CDAudioLeft_BeforeVol = 0;
+            short CDAudioRight_BeforeVol = 0;
+            if (cdSamples > 0) {
+                short CDLeftVolume = (short)CDInputVolume;
+                short CDRightVolume = (short)(CDInputVolume >> 16);
+                CDAudioLeft_BeforeVol = CDDataControl.CDAudioSamples.Dequeue();
+                CDAudioRight_BeforeVol = CDDataControl.CDAudioSamples.Dequeue();
+                CDAudioLeft += (short)((CDAudioLeft_BeforeVol * CDLeftVolume) >> 15);
+                CDAudioRight += (short)((CDAudioRight_BeforeVol * CDRightVolume) >> 15);
+            }
+            captureBuffers(0x000 + captureOffset, CDAudioLeft_BeforeVol);               //Capture CD Audio left (before *volume)
+            captureBuffers(0x400 + captureOffset, CDAudioRight_BeforeVol);              //Capture CD Audio right (before *volume)
+
+            sumLeft += CDAudioEnable ? CDAudioLeft : 0;
+            sumRight += CDAudioEnable ? CDAudioRight : 0;
+            reverbLeft_Input += (CDAudioEnable && CDReverbEnable) ? CDAudioLeft : 0;
+            reverbRight_Input += (CDAudioEnable && CDReverbEnable) ? CDAudioRight : 0;
+
+            captureBuffers(0x800 + captureOffset, voices[1].lastSample);             //Capture Voice 1
+            captureBuffers(0xC00 + captureOffset, voices[3].lastSample);             //Capture Voice 3
+            captureOffset += 2;
+
+            if (captureOffset > 0x3FF) { captureOffset = 0; }
+
+            if (reverbCounter == 1) {
+                (reverbLeft, reverbRight) = processReverb(reverbLeft_Input, reverbRight_Input);
+            }
+
+            sumLeft += reverbLeft;
+            sumRight += reverbRight;
+
+            sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFE) * mainVolumeLeft) >> 15;
+            sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFE) * mainVolumeRight) >> 15;
+
+            //SPU Mute
+            sumLeft = SPUMuted ? 0 : sumLeft;
+            sumRight = SPUMuted ? 0 : sumRight;
+
+            outputBuffer[outputBufferPtr++] = (byte)sumLeft;
+            outputBuffer[outputBufferPtr++] = (byte)(sumLeft >> 8);
+            outputBuffer[outputBufferPtr++] = (byte)sumRight;
+            outputBuffer[outputBufferPtr++] = (byte)(sumRight >> 8);
+
+            if (outputBufferPtr >= 2048) {
+                playAudio(outputBuffer);
+                outputBufferPtr -= 2048;
+            }
+
+            if (voiceHitAddress) {
+                SPU_IRQ();
+            }
+
+            //Schedule Next Event
+            Scheduler.ScheduleEvent(0x300, SPUCallback, Event.SPU);
+        }
+
         private void captureBuffers(uint address, short value) { //Experimental 
             Span<byte> Memory = new Span<byte>(RAM, (int)address, 2);
             MemoryMarshal.Write<short>(Memory, ref value);
@@ -529,6 +658,7 @@ namespace PSXSharp {
                 SPU_IRQ();
             }
         }
+
         private (int, int) processReverb(int leftInput, int rightInput) {
 
             //Apply reverb formula
@@ -628,8 +758,8 @@ namespace PSXSharp {
             // Wait one 22050Hz cycle, then repeat the above stuff
 
             return (leftOutput , rightOutput);
-
         }
+
         public void SPU_IRQ() {
             if (IRQ9Enable) {
                 IRQ_Flag = 1;
@@ -647,8 +777,8 @@ namespace PSXSharp {
             if ((final == SPU_IRQ_Address) || ((final + 1) == SPU_IRQ_Address)) { SPU_IRQ(); }
             RAM[final] = (byte)value;
             RAM[final + 1] = (byte)(value >> 8);
-
         }
+
         private short reverbMemoryRead(uint address) {
             address += reverbCurrentAddress;
             uint start = (uint)mBASE << 3;
@@ -656,7 +786,6 @@ namespace PSXSharp {
             uint final = (start + ((address - start) % (end - start))) & 0x7FFFE; //Aliengment for even addresses only
             if((final == SPU_IRQ_Address) || ((final + 1) == SPU_IRQ_Address)) { SPU_IRQ(); }
             return (short)(((uint)RAM[final + 1] << 8) | RAM[final]);
-
         }
 
         private void modulatePitch(int i) {
@@ -691,6 +820,7 @@ namespace PSXSharp {
             RAM[currentAddress++] = (byte)((data >> 16) & 0xFF);
             RAM[currentAddress++] = (byte)((data >> 24) & 0xFF);
         }
+
         internal uint SPUtoDMA() {
             if ((transfer_Control >> 1 & 7) != 2) { throw new Exception(); }
             currentAddress &= 0x7FFFF;
@@ -703,6 +833,5 @@ namespace PSXSharp {
        
             return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
         }
-
     }
 }

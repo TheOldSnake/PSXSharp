@@ -1,14 +1,14 @@
-﻿using System;
+﻿using PSXSharp.Core.x64_Recompiler;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Emit;
-using System.Windows.Media.Animation;
-using static PSXSharp.Controller;
 
 namespace PSXSharp {
     public unsafe class CD_ROM {
         public Range range = new Range(0x1F801800, 4);
         const int OneSecond = 33868800;
+        Action CDROMCallback;
+
         public enum Flags {
             INT1 = 1, //INT1 Received SECOND (or further) response to ReadS/ReadN (and Play+Report)
             INT2 = 2, //INT2 Received SECOND response (complete/done)
@@ -16,7 +16,8 @@ namespace PSXSharp {
             INT4 = 4, //INT4 DataEnd(when Play/Forward reaches end of disk)
             INT5 = 5, //INT5 So many things, but mainly for errors
             INT6 = 6, //NA
-            INT7 = 7  //NA
+            INT7 = 7, //NA
+            Dummy = 8,
         }
         public enum Delays { /* Magic Numbers */
             Zero = 0,
@@ -115,12 +116,14 @@ namespace PSXSharp {
         public CD_ROM(string path, bool isDirectFile) {
             LoadLUT();
             DataController = new CDROMDataController(path);
+            CDROMCallback = CDROMEventHandler;
         }
 
         public CD_ROM() {   //Overload for when booting EXEs
             //Stub for the CDROM Tests
             LoadLUT();
-            //DataController = new CDROMDataController(@"C:\Users\Old Snake\Desktop\PS1\ROMS\Archive");
+            DataController = new CDROMDataController(@"C:\Users\Old Snake\Desktop\PS1\ROMS\Archive");
+            CDROMCallback = CDROMEventHandler;
         }
 
         private void LoadLUT() {
@@ -163,7 +166,7 @@ namespace PSXSharp {
         bool IsError;
         public void Controller(byte command) {
             //PendingCommand = command;
-            TransmissionDelay = 1000;
+            /*TransmissionDelay = 1000;
             IsError = CurrentCommand == 0x16 && command == 0x1 && Responses.Count > 0; //It's not that simple...
             if (IsError) {
                 for (int i = 0; i < Responses.Count; i++) {
@@ -171,23 +174,24 @@ namespace PSXSharp {
                         Responses.ElementAt(i).NextState = CDROMState.Idle;
                     }
                 }
-            }
-            //Console.WriteLine("CDROM: " + command.ToString("x"));
+            }*/
+
             Execute(command);
+            ScheduleCDResponse();
         }
 
         public void Execute(int command) {
             CurrentCommand = (byte)command;
-            if (IsError) {
+            /*if (IsError) {
                 Responses = new Queue<Response>(Responses.Where(x => x.interrupt == (int)Flags.INT3));    //Keep only INT3
                 LookUpTable[command](this);                                                             //Execute then error
                 stat = 0x6;
                 Error(this, Errors.InvalidParameter, OneSecond * 5); //5s
                 Console.WriteLine("[CDROM] Error at command: 0x" + command.ToString("x"));
                 return;
-            }
+            }*/
             LookUpTable[command](this);
-            //Console.WriteLine("[CDROM] Command: 0x" + command.ToString("x"));
+            //Console.WriteLine("[CDROM] Command: 0x" + command.ToString("x").ToUpper());
         }
 
         public void SwapDisk(string path) {
@@ -502,7 +506,7 @@ namespace PSXSharp {
             cdrom.CurrentIndex = newIndex;
             cdrom.stat |= 0x2;    //Motor On
             cdrom.SkipRate = 0;   //Reset skip rate
-            Response ack = new Response(new byte[] { cdrom.stat }, Delays.INT3_General, Flags.INT3, CDROMState.PlayingCDDA);
+            Response ack = new Response(new byte[] { cdrom.stat }, Delays.INT3_General, Flags.INT3, cdrom.State);
             cdrom.Responses.Enqueue(ack);
 
             if (cdrom.ParameterBuffer.Count > 0 && cdrom.ParameterBuffer.Peek() > 0) {
@@ -524,6 +528,10 @@ namespace PSXSharp {
                 }
             }
 
+            //This is the first response of the play, it has to change the state and to have the playing cdda bit set to 1
+            Response read = new Response(new byte[] { (byte)(cdrom.stat | (1 << 7)) }, cdrom.ReadRate, (int)Flags.INT1, CDROMState.PlayingCDDA);
+            cdrom.Responses.Enqueue(read);
+
             Console.WriteLine("[CDROM] CD-DA at MSF: " + cdrom.M + ":" + cdrom.S + ":" + cdrom.F +
                 " - Track: " + cdrom.DataController.SelectedTrackNumber);
         }
@@ -534,6 +542,8 @@ namespace PSXSharp {
             //It moves the drive head to the begin of the first track
 
             cdrom.Responses.Clear();    //Very questionable
+            Scheduler.FlushEvents(Event.CDROM);
+
             cdrom.stat = 0x2;
             Response ack = new Response(new byte[] { cdrom.stat }, Delays.INT3_General, Flags.INT3, CDROMState.Idle);
             cdrom.stat = 0x0;
@@ -556,9 +566,11 @@ namespace PSXSharp {
             /*For a disk with NN tracks, parameter values 01h..NNh return the start of the specified track, 
              *parameter value 00h returns the end of the last track, and parameter values bigger than NNh return error code 10h.*/
             if (cdrom.ParameterBuffer.Count != 1) {
+                cdrom.ParameterBuffer.Clear();
                 Error(cdrom, Errors.InvalidNumberOfParameters);
                 return;
             }
+
             int BCD = cdrom.ParameterBuffer.Dequeue();
             int N = BcdToDec((byte)BCD);
             int lastIndex = cdrom.DataController.Disk.Tracks.Length - 1;
@@ -586,6 +598,7 @@ namespace PSXSharp {
         }
         private static void GetTN(CD_ROM cdrom) {
             if (cdrom.ParameterBuffer.Count > 0) {
+                cdrom.ParameterBuffer.Clear();
                 Error(cdrom,Errors.InvalidNumberOfParameters);
                 return;
             }
@@ -611,6 +624,7 @@ namespace PSXSharp {
 
         private static void Pause(CD_ROM cdrom) {
             cdrom.Responses.Clear();    //This is very questionable
+            Scheduler.FlushEvents(Event.CDROM);
 
             Response ack = new Response(new byte[] { cdrom.stat }, Delays.INT3_General, Flags.INT3, CDROMState.Idle);    //Stat is still reading
             cdrom.stat = 0x2;
@@ -633,6 +647,7 @@ namespace PSXSharp {
             cdrom.Mode = 0;         
             cdrom.stat = 0x2;
             cdrom.Responses.Clear();
+            Scheduler.FlushEvents(Event.CDROM);
             cdrom.DataController.DataFifo.Clear();
             //cdrom.DataController.SectorBuffer.Clear();
             cdrom.DataController.SelectTrack(1);
@@ -662,7 +677,7 @@ namespace PSXSharp {
             }
             cdrom.CurrentIndex = newIndex;
             cdrom.stat |= 0x2;    //Motor On
-            Response ack = new Response(new byte[] { cdrom.stat }, Delays.INT3_General, Flags.INT3, CDROMState.ReadingData);
+            Response ack = new Response(new byte[] { cdrom.stat }, Delays.INT3_General, Flags.INT3, cdrom.State);
             cdrom.Responses.Enqueue(ack);
 
             if (cdrom.CurrentIndex > cdrom.DataController.Disk.Tracks[0].Length) {           //Error if reading out of data track
@@ -685,6 +700,10 @@ namespace PSXSharp {
             if (cdrom.DataController.SelectedTrackNumber != 1) {
                 cdrom.DataController.SelectTrack(1);      //Change Binary to main (only if it isn't already on main)
             }
+
+            //This is the first response of the read, it has to change the state and to have the reading bit set to 1
+            Response read = new Response(new byte[] { (byte)(cdrom.stat | (1 << 5)) }, cdrom.ReadRate, (int)Flags.INT1, CDROMState.ReadingData);
+            cdrom.Responses.Enqueue(read);
             //Further responses [INT1] are added in tick() 
         }
 
@@ -775,9 +794,9 @@ namespace PSXSharp {
                 Error(cdrom, Errors.InvalidParameter);
             }
             cdrom.SetLoc = true;
+
             /*Console.WriteLine("[CDROM] Setloc -> " + MM.ToString().PadLeft(2,'0') + ":" + 
                 SS.ToString().PadLeft(2, '0') + ":" + FF.ToString().PadLeft(2, '0'));*/
-
         }
 
         private static void Error(CD_ROM cdrom, Errors code) {  //General Command Error
@@ -797,6 +816,7 @@ namespace PSXSharp {
 
         private static void GetID(CD_ROM cdrom) {
             if (cdrom.ParameterBuffer.Count > 0) {
+                cdrom.ParameterBuffer.Clear();
                 Error(cdrom, Errors.InvalidNumberOfParameters);
                 return;
             }
@@ -949,8 +969,8 @@ namespace PSXSharp {
 
                     stat |= (1 << 5);   //Read at least one sector before setting the bit
 
-                    /*Console.WriteLine("[CDROM] Data Read at " + M.ToString().PadLeft(2,'0') + ":" + S.ToString().PadLeft(2, '0') + ":" + F.ToString().PadLeft(2, '0')
-                        + " --- Index :" + CurrentIndex.ToString("x"));*/
+                    Console.WriteLine("[CDROM] Data Read at " + M.ToString().PadLeft(2,'0') + ":" + S.ToString().PadLeft(2, '0') + ":" + F.ToString().PadLeft(2, '0')
+                        + " --- Index :" + CurrentIndex.ToString("x"));
 
                     bool sendToCPU = DataController.LoadNewSector(CurrentIndex);
                     IncrementIndex(150);
@@ -992,6 +1012,125 @@ namespace PSXSharp {
                     IncrementIndex(0);              
                     ReadRate = OneSecond / (DoubleSpeed ? 150 : 75);    //Update the rate for next INTs
                     break;
+            }
+        }
+
+        public void CDROMEventHandler() {
+            bool consumed = false;
+            Response next;
+            ReadRate = OneSecond / (DoubleSpeed ? 150 : 75);
+            if (Responses.Count > 0) {
+                if ((IRQ_Flag & 0x7) == 0) {                                   //Make sure the previous INT has been ACKed, INTs are queued not ORed
+                    Response current = Responses.Dequeue();
+                    if (current.interrupt != (int)Flags.Dummy) {               //Dummy responses are not actual responses
+                        State = current.NextState;                             //But we need them to continue reading/playing if there is no actual response
+                        IRQ_Flag |= (byte)current.interrupt;
+                        ResponseBuffer.WriteBuffer(ref current.values);
+                        if ((IRQ_Enable & IRQ_Flag) != 0) {
+                            IRQ_CONTROL.IRQsignal(2);
+                        }
+                    }
+                    //Console.WriteLine($"Response INT {current.interrupt}");
+                    consumed = true;
+                }
+            }
+            
+            switch (State) {
+                case CDROMState.Idle:
+                    stat = 0x2;
+                    break;
+
+                case CDROMState.SwappingDisk:
+                    if (SwappingDelay > 0) {        //TODO
+                       // SwappingDelay -= cycles;
+                        stat |= (1 << 4);  //Lid open bit
+                        LidOpen = true;
+                    } else {
+                        State = CDROMState.Idle;
+                        LidOpen = false;
+                    }
+                    break;
+
+                case CDROMState.Seeking:
+                    stat |= (1 << 6);
+                    break;
+
+                case CDROMState.ReadingData:
+                    if (CurrentIndex >= DataController.EndOfDisk) {
+                        Response pause = new Response(new byte[] { stat }, Delays.Zero, Flags.INT4, CDROMState.Idle);
+                        Responses.Enqueue(pause);
+                        Console.WriteLine("[CDROM] End of Disk!");
+                        break;
+                    }
+
+                    //Ensure the reading flag is set
+                    stat |= (1 << 5);
+
+                    /*Console.WriteLine("[CDROM] Data Read at " + M.ToString().PadLeft(2,'0') + ":" + S.ToString().PadLeft(2, '0') + ":" + F.ToString().PadLeft(2, '0')
+                        + " --- Index :" + CurrentIndex.ToString("x"));*/
+
+                    bool sendToCPU = DataController.LoadNewSector(CurrentIndex);
+                    IncrementIndex(150);
+
+                    if (sendToCPU) {
+                        next = new Response(new byte[] { stat }, ReadRate, (int)Flags.INT1, State);  
+                    } else {
+                        next = new Response(new byte[] { stat }, ReadRate, (int)Flags.Dummy, State);    
+                    }
+
+                    Responses.Enqueue(next);
+                    break;
+
+                case CDROMState.PlayingCDDA:
+                    if (CurrentIndex >= DataController.EndOfDisk || (CurrentIndex >= DataController.EndOfTrack && AutoPause)) {
+                        Response pause = new Response(new byte[] { stat }, Delays.Zero, Flags.INT4, CDROMState.Idle);
+                        Responses.Enqueue(pause);
+                        Console.WriteLine("[CDROM] CD-DA Paused Track: " + DataController.SelectedTrackNumber);
+                        break;
+                    }
+
+                    //Console.WriteLine("[CDROM] Play at MSF: " + M.ToString().PadLeft(2,'0') + ":" + S.ToString().PadLeft(2, '0') + ":" + F.ToString().PadLeft(2, '0'));
+
+                    //Ensure the playing cdda flag is set
+                    stat |= (1 << 7);  
+
+                    if (DataController.Disk.HasCue) {
+                        DataController.PlayCDDA(CurrentIndex);
+                    } else {
+                        Console.WriteLine("[CD-ROM] Ignoring play command (No cue)");
+                    }
+
+                    if (CDDAReport && IsReportableSector) {
+                        next = new Response(GetCDDAReport(), ReadRate, (int)Flags.INT1, State);
+                    } else {
+                        next = new Response(new byte[] { stat }, ReadRate, (int)Flags.Dummy, State);
+                    }
+
+                    Responses.Enqueue(next);
+                    IncrementIndex(0);
+                    break;
+            }
+
+            if (!consumed) {        
+                Console.WriteLine($"CD Response not consumed: {Responses.Peek().interrupt}");   //This should be very rare
+            }
+
+            ScheduleCDResponse();
+        }
+
+        private void ScheduleCDResponse() {
+            if (Responses.Count > 0 && !Scheduler.HasEventOfType(Event.CDROM)) {
+                Response first = Responses.Peek();
+                Scheduler.ScheduleEvent((int)first.delay, CDROMCallback, Event.CDROM);
+                if (first.delay > int.MaxValue) {
+                    Console.WriteLine("CD Delat > Int");
+                }
+                //Console.WriteLine($"Scheduled INT {first.interrupt}");
+                /*Console.Write("Queue content: ");
+                foreach (var response in Responses) {
+                    Console.Write($" {response.interrupt} ");
+                }
+                Console.WriteLine();*/
             }
         }
 

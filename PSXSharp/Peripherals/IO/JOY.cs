@@ -1,4 +1,6 @@
-﻿using System;
+﻿using PSXSharp.Core;
+using PSXSharp.Core.x64_Recompiler;
+using System;
 using System.IO;
 
 namespace PSXSharp.Peripherals.IO {
@@ -12,9 +14,9 @@ namespace PSXSharp.Peripherals.IO {
 
         //Status (R) -> 4           This register comes after 4 bytes of Data address, although the Data length is only 1 byte
         struct StatusRegister {
-            public byte TX_Ready1;           //0
+            public byte TX_FiFO_Not_Full;    //0
             public byte RX_FIFO_Not_Empty;   //1
-            public byte TX_Ready2;           //2
+            public byte TX_Idle;             //2
             public byte RX_Parity_Error;     //3            
             public byte AckLevel;            //7
             public byte InterruptRequest;    //9
@@ -65,6 +67,8 @@ namespace PSXSharp.Peripherals.IO {
         public MemoryCard MemoryCard1;
         const int MEMORY_CARD_SIZE = 128 * 1024;
         int Delay = -1;
+        Action Callback;
+        int EventDelay;
 
         public JOY() {
             byte[] memoryCardData;
@@ -82,6 +86,7 @@ namespace PSXSharp.Peripherals.IO {
 
             MemoryCard1 = new MemoryCard(memoryCardData);
             Controller1 = new Controller();
+            Callback = JOYEvent;
         }
 
         public uint LoadWord(uint address) {
@@ -109,11 +114,13 @@ namespace PSXSharp.Peripherals.IO {
                 case 0x0: Transfare((byte)data); break;
                 case 0x8: WriteMode(data); break;
                 case 0xA: WriteCtrl(data); break;
-                case 0xE: Status.Baud = data; break;
+                case 0xE: 
+                    Status.Baud = data;
+                    EventDelay = data * 8;
+                    break;
                 default: throw new Exception("Attempting to store half to: " + address.ToString("x"));
             }
         }
-
 
         public byte LoadByte(uint address) {
             switch (address & 0xF) {
@@ -125,9 +132,11 @@ namespace PSXSharp.Peripherals.IO {
                             Status.RX_FIFO_Not_Empty = 0;
                             return 0xFF;
                         } else {
+                            //Console.WriteLine("RX: " + RX_Data.ToString("x"));
                             return RX_Data;
                         }
                     } else {
+                        //Console.WriteLine("RX: FF");
                         return 0xFF;
                     }
 
@@ -146,18 +155,34 @@ namespace PSXSharp.Peripherals.IO {
                 if (Delay <= 0) {
                     Status.AckLevel = 0;
                     Status.InterruptRequest = 1;
-                    Status.TX_Ready2 = 1;           
+                    Status.TX_Idle = 1;           
                     IRQ_CONTROL.IRQsignal(7);
                 }
             }
         }
 
+        public void JOYEvent() {
+            Status.AckLevel = 0;
+            Status.InterruptRequest = 1;
+            Status.TX_Idle = 1;
+            IRQ_CONTROL.IRQsignal(7);
+            //Console.WriteLine("IRQ7");
+            ulong current = CPUWrapper.GetCPUInstance().GetCurrentCycle();
+            //Console.WriteLine("IRQ7 at cycle: " + current.ToString("x"));
+            //Console.WriteLine("Diff: " + (current-scTime));
+        }
+
         public void Transfare(byte value) {
+ 
             RX_Data = 0xFF;
             TX_Data = value;
             Status.RX_FIFO_Not_Empty = 1;
 
-            if (Ctrl.JOYnOutput == 1 && Ctrl.SelectedSlot == 0) {
+            //Console.WriteLine("TX: " + TX_Data.ToString("x"));
+            //Console.WriteLine("FOR: " + selectedDevice);
+            //Console.WriteLine("Slot: " + Ctrl.SelectedSlot);
+
+            if (Ctrl.SelectedSlot == 0) {
                 switch (selectedDevice) {
                     case SelectedDevice.Controller:
                         RX_Data = Controller1.Response(TX_Data);
@@ -172,8 +197,12 @@ namespace PSXSharp.Peripherals.IO {
                     default:
                         //Handle First byte (selecting Controller vs Memorycard)
                         switch (TX_Data) {          
-                            case (byte)AccessType.Controller: selectedDevice = SelectedDevice.Controller; break; //Controller Access
-                            case (byte)AccessType.MemoryCard: selectedDevice = SelectedDevice.MemoryCard; break; //MemoryCard Access
+                            case (byte)AccessType.Controller: selectedDevice = SelectedDevice.Controller; 
+                                //Console.WriteLine("ACCESS CONTROLLER");
+                                break; //Controller Access
+                            case (byte)AccessType.MemoryCard: selectedDevice = SelectedDevice.MemoryCard;
+                                //Console.WriteLine("ACCESS MEMCARD");
+                                break; //MemoryCard Access
                             default:
                                 Console.WriteLine("[JOY] Unknown device selected: " + TX_Data.ToString("X"));
                                 Status.AckLevel = 0;
@@ -188,24 +217,35 @@ namespace PSXSharp.Peripherals.IO {
             }
 
             if (Status.AckLevel == 0) {
-                Controller1.SequenceNum = 0;
-                MemoryCard1.Reset();
-                Delay = -1;
-                selectedDevice = SelectedDevice.None;
+                if (Ctrl.SelectedSlot == 0) {
+                    Controller1.SequenceNum = 0;
+                    MemoryCard1.Reset();
+                    Delay = -1;
+                    selectedDevice = SelectedDevice.None;
+                    //Console.WriteLine("Reset ack = 0");
+                }
+
             } else {
-                Delay = 350; //The Kernel waits 100 cycles or so
+                //Delay = 350; //The Kernel waits 100 cycles or so
+                Scheduler.ScheduleEvent(350, Callback, Event.SIO);
+                //scTime = CPUWrapper.GetCPUInstance().GetCurrentCycle();
+                //Console.WriteLine("Scheduled at cycle: " + scTime.ToString("x"));
             }
         }
 
+        ulong scTime;
+
         private uint GetStatus() {
             uint stat = 0;
-            stat |= (byte)(Status.TX_Ready1 & 1);
+            stat |= (byte)(Status.TX_FiFO_Not_Full & 1);
             stat |= (byte)((Status.RX_FIFO_Not_Empty & 1) << 1);
-            stat |= (byte)((Status.TX_Ready1 & 1) << 2);
+            stat |= (byte)((Status.TX_Idle & 1) << 2);
             stat |= (byte)((Status.RX_Parity_Error & 1) << 3);
             stat |= (byte)((Status.AckLevel & 1) << 7);
             stat |= (byte)((Status.InterruptRequest & 1) << 9);
             stat |= (ushort)((Status.Baud & 0xFFFF) << 11);
+
+            //Console.WriteLine("Stat read: " + stat.ToString("x"));
             return stat;
         }
 
@@ -241,6 +281,7 @@ namespace PSXSharp.Peripherals.IO {
             control |= (byte)((Ctrl.SelectedSlot & 1) << 13);
             return control;
         }
+
         private void WriteCtrl(ushort control) {
             Ctrl.TX_Enable = (byte)(control & 1);
             Ctrl.JOYnOutput = (byte)((control >> 1) & 1);
@@ -266,8 +307,10 @@ namespace PSXSharp.Peripherals.IO {
                 Controller1.SequenceNum = 0;
                 RX_Data = 0xFF;
                 TX_Data = 0xFF;
-                Status.TX_Ready1 = 1;
-                Status.TX_Ready2 = 0;   
+                Status.TX_FiFO_Not_Full = 1;
+                Status.TX_Idle = 0;
+                Scheduler.FlushEvents(Event.SIO);
+                //Console.WriteLine("Reset = 1");
             }
         }
     }

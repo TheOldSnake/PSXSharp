@@ -225,6 +225,7 @@ namespace PSXSharp {
             }
         }
 
+        //TODO: Optimize
         public void ReadInput(JoystickState externalController) {
             if (externalController == null) { 
                 IsConnected = false;

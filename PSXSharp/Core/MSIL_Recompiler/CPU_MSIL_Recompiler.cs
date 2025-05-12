@@ -500,5 +500,10 @@ namespace PSXSharp {
                 BIOS_CacheBlocks[i].IsCompiled = false;
             });
         }
+
+        public ulong GetCurrentCycle() {
+            //TODO
+            throw new NotImplementedException();
+        }
     }
 }

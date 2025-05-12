@@ -1,40 +1,89 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace PSXSharp.Core.x64_Recompiler {
-
-    //Not complete. 
-    //TODO
     public static class Scheduler {       
-        public static List<ScheduledIRQ> ScheduledIRQs = new List<ScheduledIRQ>();
-        public static void ScheduleIRQ(uint cycles, uint IRQ) {
-            ScheduledIRQ scheduledIRQ = new ScheduledIRQ();
-            scheduledIRQ.Cycles = cycles;
-            scheduledIRQ.IRQ = IRQ;
-            ScheduledIRQs.Add(scheduledIRQ);
+        private static List<ScheduledEvent> ScheduledEvents = new List<ScheduledEvent>();
+        private static ScheduledEvent CPUHeldEvent;
+        private static Action DummyCallback = Dummy;
 
-            //Sort the list in ascending order of Cycles
-            ScheduledIRQs.Sort((a, b) => a.Cycles.CompareTo(b.Cycles));
+        public static void ScheduleEvent(int delayCycles, Action callback, Event type) {           
+            ulong currentTime = CPUWrapper.GetCPUInstance().GetCurrentCycle();
+
+            ScheduledEvent scheduledEvent = new ScheduledEvent();
+            scheduledEvent.Callback = callback;
+            scheduledEvent.Type = type;
+            scheduledEvent.EndTime = currentTime + (ulong)delayCycles;
+            ScheduledEvents.Add(scheduledEvent);
+
+            //Sort the list in ascending order of end time
+            ScheduledEvents.Sort((a, b) => a.EndTime.CompareTo(b.EndTime));
         }
 
-        public static void Tick(uint cycles, ref BUS bus) {
-            foreach (ScheduledIRQ ScheduledIRQ in ScheduledIRQs) {
-                ScheduledIRQ.Cycles -= cycles;
+        public static void ScheduleEvent(int delayCycles, Action callback, Event type, ulong currentCycle) {
+            ScheduledEvent scheduledEvent = new ScheduledEvent();
+            scheduledEvent.Callback = callback;
+            scheduledEvent.Type = type;
+            scheduledEvent.EndTime = currentCycle + (ulong)delayCycles;
+            ScheduledEvents.Add(scheduledEvent);
+
+            //Sort the list in ascending order of end time
+            ScheduledEvents.Sort((a, b) => a.EndTime.CompareTo(b.EndTime));
+        }
+
+        public static ScheduledEvent DequeueNearestEvent() {
+            ScheduledEvent nearest = ScheduledEvents[0];
+            ScheduledEvents.RemoveAt(0);
+            CPUHeldEvent = nearest;
+            return nearest;
+        }
+
+        public static void FlushEvents(Event type) {
+            for (int i = ScheduledEvents.Count - 1; i >= 0; i--) {
+                if (ScheduledEvents[i].Type == type) {
+                    ScheduledEvents.RemoveAt(i);
+                }
             }
-            bus.Tick((int)cycles);
+
+            //If the CPU is holding an event that it flushed, we point it to an empty function
+            //However, this is not very common
+            if (CPUHeldEvent.Type == type) {
+                CPUHeldEvent.Callback = DummyCallback;
+            }
         }
 
-        public static uint HowCyclesUntilIRQ() {
-            return ScheduledIRQs.Count > 0 ? ScheduledIRQs[0].Cycles : 200;
+        public static void FlushAllEvents() {
+            ScheduledEvents.Clear();
+            CPUHeldEvent = null;
         }
 
-        public static bool ShouldInterrupt() {
-            return ScheduledIRQs.Count > 0 && ScheduledIRQs[0].Cycles <= 0;
+        public static bool HasEventOfType(Event type) {
+            foreach (ScheduledEvent scheduledEvent in ScheduledEvents) {
+                if (scheduledEvent.Type == type) {
+                    return true;
+                }
+            }
+            return false;
         }
+
+        public static void Dummy() { }
     }
 
-    public class ScheduledIRQ {
-        public uint Cycles;
-        public uint IRQ;
+    public class ScheduledEvent {
+        public Action Callback;            //Event Handler
+        public Event Type;                 //Event Type
+        public ulong EndTime;              //Time of which the event should happen
     }
 
+    public enum Event {
+        Vblank,
+        Hblank,
+        SPU,
+        CDROM,
+        DMA,
+        Timer0,
+        Timer1,
+        Timer2,
+        SIO,
+    }
 }

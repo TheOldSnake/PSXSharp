@@ -1214,5 +1214,10 @@ namespace PSXSharp.Core.Interpreter {
             //Unsupported
             return;
         }
+
+        public ulong GetCurrentCycle() {
+            //TODO
+            throw new NotImplementedException();
+        }
     }
 }

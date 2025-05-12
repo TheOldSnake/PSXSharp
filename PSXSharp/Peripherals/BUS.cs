@@ -41,6 +41,7 @@ namespace PSXSharp {
         public bool debug = false;
 
         public uint BUS_Cycles = 0;
+        Action Callback;
 
         public BUS(
             BIOS BIOS, RAM RAM, Scratchpad Scratchpad,
@@ -65,11 +66,13 @@ namespace PSXSharp {
             this.Timer2 = Timer2;
             this.MDEC = MDEC;
             this.GPU = GPU;
+            Callback = DMAIRQ;
         }
 
         public uint LoadWord(uint address) {           
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("read32: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadWord(physicalAddress);
@@ -99,6 +102,7 @@ namespace PSXSharp {
         public void StoreWord(uint address,uint value) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("write32: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): RAM.StoreWord(physicalAddress, value); break;
@@ -135,6 +139,7 @@ namespace PSXSharp {
         public ushort LoadHalf(uint address) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if(debug) Console.WriteLine("read16: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): return RAM.LoadHalf(physicalAddress);
@@ -162,6 +167,7 @@ namespace PSXSharp {
         public void StoreHalf(uint address, ushort value) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("write16: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): RAM.StoreHalf(physicalAddress, value); break;
@@ -194,6 +200,7 @@ namespace PSXSharp {
         public byte LoadByte(uint address) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("read8: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadByte(physicalAddress);
@@ -219,6 +226,7 @@ namespace PSXSharp {
         public void StoreByte(uint address, byte value) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("write8: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): RAM.StoreByte(physicalAddress, value); break;
@@ -370,23 +378,23 @@ namespace PSXSharp {
             }
 
             if (DMA.IRQRequest() == 1) {
-                IRQ_CONTROL.IRQsignal(3);   //Instant IRQ may cause problems
+                //IRQ_CONTROL.IRQsignal(3);   //Instant IRQ may cause problems
+                Scheduler.ScheduleEvent(0, Callback, Event.DMA);
             };
         }
 
         public void Tick(int cycles) {
-            Timer0.SystemClockTick(cycles);
-            Timer1.SystemClockTick(cycles);
-            Timer2.SystemClockTick(cycles);
-            SPU.SPU_Tick(cycles);
-            GPU.Tick(cycles * GPU_FACTOR);
-            CDROM.tick(cycles);
-            JOY_IO.Tick(cycles);
+           //Timer0.SystemClockTick(cycles);
+           //Timer1.SystemClockTick(cycles);
+           //Timer2.SystemClockTick(cycles);
+           //SPU.SPU_Tick(cycles);
+           //GPU.Tick(cycles * GPU_FACTOR);
+           //CDROM.tick(cycles);
+           // JOY_IO.Tick(cycles);
         }
 
-        public class DMAIRQ {
-            public int WaitCycles;
-            public uint Channel;
+        public void DMAIRQ() {
+            IRQ_CONTROL.IRQsignal(3);
         }
 
     }
