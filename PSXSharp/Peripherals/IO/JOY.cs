@@ -168,7 +168,7 @@ namespace PSXSharp.Peripherals.IO {
             IRQ_CONTROL.IRQsignal(7);
             //Console.WriteLine("IRQ7");
         }
-
+        int x = 0;
         public void Transfare(byte value) {
  
             RX_Data = 0xFF;
@@ -225,7 +225,6 @@ namespace PSXSharp.Peripherals.IO {
                 MemoryCard1.Reset();
                 Delay = -1;
                 selectedDevice = SelectedDevice.None;
-
             } else {
                 Scheduler.ScheduleEvent(EventDelay, Callback, Event.SIO);
             }
@@ -243,7 +242,7 @@ namespace PSXSharp.Peripherals.IO {
             stat |= (ushort)((Status.Baud & 0xFFFF) << 11);
 
             Status.AckLevel = 0;
-            //Console.WriteLine($"Read stat = {stat.ToString("x")} , time = {currentTime.ToString("x")}");
+            //Console.WriteLine($"Read stat = {stat.ToString("x")}");
 
             return stat;
         }
@@ -311,9 +310,10 @@ namespace PSXSharp.Peripherals.IO {
                 Status.TX_FiFO_Not_Full = 1;
                 Status.TX_Idle = 0;
                 Scheduler.FlushEvents(Event.SIO);
+                //Console.WriteLine($"Reset!");
             }
 
-            //Console.WriteLine($"write ctrl = {control.ToString("x")} , time = {currentTime.ToString("x")}");
+            //Console.WriteLine($"write ctrl = {control.ToString("x")}");
         }
     }
 }

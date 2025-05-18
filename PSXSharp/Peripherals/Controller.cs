@@ -85,7 +85,12 @@ namespace PSXSharp {
                     }
 
                     return (byte)(Buttons & 0xff);
-                case 3: return (byte)((Buttons >> 8) & 0xff);
+                case 3:
+                    if (!IsAnalog) {
+                        SequenceNum = 0;
+                        ACK = false;
+                    }
+                    return (byte)((Buttons >> 8) & 0xff);
 
                 case 4: return RightJoyX;
                 case 5: return RightJoyY;
