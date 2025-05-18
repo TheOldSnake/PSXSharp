@@ -8,6 +8,10 @@ namespace PSXSharp.Peripherals.IO {
 
         public Range Range = new Range(0x1F801040, 16);
 
+
+        //The flags and timings of this implementation are not accurate
+        //But it works, so...
+
         //Data (R/W) -> 1/4 word    (This is actually a FIFO)
         public byte TX_Data;
         public byte RX_Data;
@@ -53,6 +57,7 @@ namespace PSXSharp.Peripherals.IO {
         enum SelectedDevice {
             Controller, MemoryCard, None
         }
+
         enum AccessType {
             Controller = 0x01, 
             MemoryCard = 0x81
@@ -68,7 +73,7 @@ namespace PSXSharp.Peripherals.IO {
         const int MEMORY_CARD_SIZE = 128 * 1024;
         int Delay = -1;
         Action Callback;
-        int EventDelay;
+        int EventDelay = 1500;
 
         public JOY() {
             byte[] memoryCardData;
@@ -115,7 +120,7 @@ namespace PSXSharp.Peripherals.IO {
                 case 0x8: WriteMode(data); break;
                 case 0xA: WriteCtrl(data); break;
                 case 0xE: 
-                    Status.Baud = data;
+                    Status.Baud = data;     //Boud rate is not implemented
                     EventDelay = data * 8;
                     break;
                 default: throw new Exception("Attempting to store half to: " + address.ToString("x"));
@@ -125,19 +130,15 @@ namespace PSXSharp.Peripherals.IO {
         public byte LoadByte(uint address) {
             switch (address & 0xF) {
                 case 0x00:
-                    if (Ctrl.JOYnOutput == 1) {
-                        Status.RX_FIFO_Not_Empty = 0;
-                        if (Ctrl.SelectedSlot == 1) {     // Controller 2 and Memory card 2 are not connected
-                            Status.AckLevel = 0;
-                            Status.RX_FIFO_Not_Empty = 0;
-                            return 0xFF;
-                        } else {
-                            //Console.WriteLine("RX: " + RX_Data.ToString("x"));
-                            return RX_Data;
-                        }
-                    } else {
-                        //Console.WriteLine("RX: FF");
+                    Status.RX_FIFO_Not_Empty = 0;
+                    Status.TX_FiFO_Not_Full = 1;
+
+                    if (Ctrl.SelectedSlot == 1) {     // Controller 2 and Memory card 2 are not connected
+                        Status.AckLevel = 0;
                         return 0xFF;
+                    } else {
+                        //Console.WriteLine("RX: " + RX_Data.ToString("x"));
+                        return RX_Data;
                     }
 
                 case 0x04: return (byte)GetStatus();
@@ -162,21 +163,18 @@ namespace PSXSharp.Peripherals.IO {
         }
 
         public void JOYEvent() {
-            Status.AckLevel = 0;
             Status.InterruptRequest = 1;
             Status.TX_Idle = 1;
             IRQ_CONTROL.IRQsignal(7);
             //Console.WriteLine("IRQ7");
-            ulong current = CPUWrapper.GetCPUInstance().GetCurrentCycle();
-            //Console.WriteLine("IRQ7 at cycle: " + current.ToString("x"));
-            //Console.WriteLine("Diff: " + (current-scTime));
         }
 
         public void Transfare(byte value) {
  
             RX_Data = 0xFF;
             TX_Data = value;
-            Status.RX_FIFO_Not_Empty = 1;
+            Status.RX_FIFO_Not_Empty = 1;   //This sould probably have a delay.
+            Status.TX_FiFO_Not_Full = 0;
 
             //Console.WriteLine("TX: " + TX_Data.ToString("x"));
             //Console.WriteLine("FOR: " + selectedDevice);
@@ -196,18 +194,24 @@ namespace PSXSharp.Peripherals.IO {
 
                     default:
                         //Handle First byte (selecting Controller vs Memorycard)
+
                         switch (TX_Data) {          
-                            case (byte)AccessType.Controller: selectedDevice = SelectedDevice.Controller; 
+                            case (byte)AccessType.Controller: 
+                                selectedDevice = SelectedDevice.Controller; 
                                 //Console.WriteLine("ACCESS CONTROLLER");
-                                break; //Controller Access
-                            case (byte)AccessType.MemoryCard: selectedDevice = SelectedDevice.MemoryCard;
+                                break; 
+
+                            case (byte)AccessType.MemoryCard: 
+                                selectedDevice = SelectedDevice.MemoryCard;
                                 //Console.WriteLine("ACCESS MEMCARD");
-                                break; //MemoryCard Access
+                                break; 
+
                             default:
                                 Console.WriteLine("[JOY] Unknown device selected: " + TX_Data.ToString("X"));
                                 Status.AckLevel = 0;
                                 return;
                         }
+
                         Status.AckLevel = 1;
                         break;
                 }
@@ -217,25 +221,18 @@ namespace PSXSharp.Peripherals.IO {
             }
 
             if (Status.AckLevel == 0) {
-                if (Ctrl.SelectedSlot == 0) {
-                    Controller1.SequenceNum = 0;
-                    MemoryCard1.Reset();
-                    Delay = -1;
-                    selectedDevice = SelectedDevice.None;
-                    //Console.WriteLine("Reset ack = 0");
-                }
+                Controller1.SequenceNum = 0;
+                MemoryCard1.Reset();
+                Delay = -1;
+                selectedDevice = SelectedDevice.None;
 
             } else {
-                //Delay = 350; //The Kernel waits 100 cycles or so
-                Scheduler.ScheduleEvent(350, Callback, Event.SIO);
-                //scTime = CPUWrapper.GetCPUInstance().GetCurrentCycle();
-                //Console.WriteLine("Scheduled at cycle: " + scTime.ToString("x"));
+                Scheduler.ScheduleEvent(EventDelay, Callback, Event.SIO);
             }
         }
 
-        ulong scTime;
-
         private uint GetStatus() {
+
             uint stat = 0;
             stat |= (byte)(Status.TX_FiFO_Not_Full & 1);
             stat |= (byte)((Status.RX_FIFO_Not_Empty & 1) << 1);
@@ -245,7 +242,9 @@ namespace PSXSharp.Peripherals.IO {
             stat |= (byte)((Status.InterruptRequest & 1) << 9);
             stat |= (ushort)((Status.Baud & 0xFFFF) << 11);
 
-            //Console.WriteLine("Stat read: " + stat.ToString("x"));
+            Status.AckLevel = 0;
+            //Console.WriteLine($"Read stat = {stat.ToString("x")} , time = {currentTime.ToString("x")}");
+
             return stat;
         }
 
@@ -279,6 +278,8 @@ namespace PSXSharp.Peripherals.IO {
             control |= (byte)((Ctrl.RX_InterruptEnable & 1) << 11);
             control |= (byte)((Ctrl.ACK_InterruptEnable & 1) << 12);
             control |= (byte)((Ctrl.SelectedSlot & 1) << 13);
+
+            //Console.WriteLine($"Read ctrl = {control.ToString("x")} , time = {currentTime.ToString("x")}");
             return control;
         }
 
@@ -300,7 +301,7 @@ namespace PSXSharp.Peripherals.IO {
                 Status.RX_Parity_Error = 0;
             }
 
-            if (Ctrl.Reset == 1 || Ctrl.JOYnOutput == 0) {
+            if (Ctrl.Reset == 1) {
                 Ctrl.Reset = 0;
                 MemoryCard1.Reset();
                 selectedDevice = SelectedDevice.None;
@@ -310,8 +311,9 @@ namespace PSXSharp.Peripherals.IO {
                 Status.TX_FiFO_Not_Full = 1;
                 Status.TX_Idle = 0;
                 Scheduler.FlushEvents(Event.SIO);
-                //Console.WriteLine("Reset = 1");
             }
+
+            //Console.WriteLine($"write ctrl = {control.ToString("x")} , time = {currentTime.ToString("x")}");
         }
     }
 }

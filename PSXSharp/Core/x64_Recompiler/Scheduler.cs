@@ -7,7 +7,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static ScheduledEvent CPUHeldEvent;
         private static Action DummyCallback = Dummy;
 
-        public static void ScheduleEvent(int delayCycles, Action callback, Event type) {           
+        public static void ScheduleEvent(int delayCycles, Action callback, Event type) {
             ulong currentTime = CPUWrapper.GetCPUInstance().GetCurrentCycle();
 
             ScheduledEvent scheduledEvent = new ScheduledEvent();
@@ -66,6 +66,16 @@ namespace PSXSharp.Core.x64_Recompiler {
             return false;
         }
 
+        public static int HowManyEventOfType(Event type) {
+            int numberOfEvents = 0;
+            foreach (ScheduledEvent scheduledEvent in ScheduledEvents) {
+                if (scheduledEvent.Type == type) {
+                    numberOfEvents++;
+                }
+            }
+            return numberOfEvents;
+        }
+
         public static void Dummy() { }
     }
 
@@ -79,7 +89,8 @@ namespace PSXSharp.Core.x64_Recompiler {
         Vblank,
         Hblank,
         SPU,
-        CDROM,
+        CDROM_General,
+        CDROM_ReadOrPlay,
         DMA,
         Timer0,
         Timer1,

@@ -30,6 +30,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         const uint CYCLES_PER_SECOND = 33868800;
         const uint CYCLES_PER_FRAME = CYCLES_PER_SECOND / 60;
+        const int CYCLES_PER_SPU_SAMPLE = 0x300;
 
         double CyclesDone = 0;
 
@@ -53,9 +54,6 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         bool IsLoadingEXE;
         string? EXEPath;
-
-        const int SPUCyclesPerSample = 0x300;
-        const int TotalCyclesPerFrame = 565047; // = 33868899 / 59.940
 
         private CPU_x64_Recompiler(bool isEXE, string? EXEPath, BUS bus) {           
             BUS = bus;
@@ -103,10 +101,10 @@ namespace PSXSharp.Core.x64_Recompiler {
             Scheduler.FlushAllEvents();
 
             //Schedule 1 initial SPU event
-            Scheduler.ScheduleEvent(SPUCyclesPerSample, BUS.SPU.SPUCallback, Event.SPU, 0);
+            Scheduler.ScheduleEvent(CYCLES_PER_SPU_SAMPLE, BUS.SPU.SPUCallback, Event.SPU, 0);
 
             //Schedule 1 initial vblank event
-            Scheduler.ScheduleEvent(TotalCyclesPerFrame, BUS.GPU.VblankEventCallback, Event.Vblank, 0);
+            Scheduler.ScheduleEvent((int)CYCLES_PER_FRAME, BUS.GPU.VblankEventCallback, Event.Vblank, 0);
         }
         
         public void TickFrame() {
@@ -134,14 +132,14 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public void Run() {
-            /*if (CPU_Struct_Ptr->PC == 0x80030000) {
+            if (CPU_Struct_Ptr->PC == 0x80030000) {
                 if (IsLoadingEXE) {
                     IsLoadingEXE = false;
                     loadTestRom(EXEPath);                   
                 }
             }
 
-            TTY(CPU_Struct_Ptr->PC);*/
+            TTY(CPU_Struct_Ptr->PC);
 
             bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, isBios);

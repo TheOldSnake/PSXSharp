@@ -104,6 +104,14 @@ namespace PSXSharp {
         }
 
         public bool LoadNewSector(int currentIndex) {  //Only for CD-XA tracks, i.e. read command, not play command
+            if (currentIndex >= SelectedTrack.Length) {
+                int newTrack = FindTrack(currentIndex);
+                SelectTrack(newTrack);
+                if (Disk.Tracks[newTrack - 1].IsAudioTrack) {
+                    return false;
+                }
+            }
+
             LastSectorHeader[0] = SelectedTrack[currentIndex + 0x0C];
             LastSectorHeader[1] = SelectedTrack[currentIndex + 0x0D];
             LastSectorHeader[2] = SelectedTrack[currentIndex + 0x0E];
