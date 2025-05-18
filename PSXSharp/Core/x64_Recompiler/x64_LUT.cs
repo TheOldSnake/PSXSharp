@@ -1,10 +1,9 @@
 ﻿using Iced.Intel;
 using PSXSharp.Core.Common;
-using PSXSharp.Core.x64_Recompiler;
 using System;
 using Instruction = PSXSharp.Core.Common.Instruction;
 
-namespace PSXSharp.Core.MSIL_Recompiler {
+namespace PSXSharp.Core.x64_Recompiler {
     public static unsafe class x64_LUT {
 
         public static readonly delegate*<Instruction, Assembler, void>[] MainLookUpTable = [
