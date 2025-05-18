@@ -168,7 +168,7 @@ namespace PSXSharp.Peripherals.IO {
             IRQ_CONTROL.IRQsignal(7);
             //Console.WriteLine("IRQ7");
         }
-        int x = 0;
+
         public void Transfare(byte value) {
  
             RX_Data = 0xFF;
