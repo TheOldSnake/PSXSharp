@@ -392,6 +392,10 @@ namespace PSXSharp {
         public void DMAIRQ() {
             IRQ_CONTROL.IRQsignal(3);
         }
+
+        public void Tick(int c) {
+
+        }
     }
 }
 
