@@ -9,7 +9,7 @@ using static Iced.Intel.AssemblerRegisters;
 using Label = Iced.Intel.Label;
 using System.Threading.Tasks;
 
-namespace PSXSharp.Core.x64_Recompiler {
+namespace PSXSharp.Core.x64_Recompiler {    //No Scheduler
     public unsafe partial class CPU_x64_Recompiler : CPU, IDisposable {
       
         [DllImport("kernel32.dll")]
