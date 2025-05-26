@@ -100,12 +100,12 @@ namespace PSXSharp.Core.x64_Recompiler {
             Scheduler.FlushAllEvents();
 
             //Schedule 1 initial SPU event
-            Scheduler.ScheduleEvent(CYCLES_PER_SPU_SAMPLE, BUS.SPU.SPUCallback, Event.SPU, 0);
+            Scheduler.ScheduleInitialEvent(CYCLES_PER_SPU_SAMPLE, BUS.SPU.SPUCallback, Event.SPU);
 
             //Schedule 1 initial vblank event
-            Scheduler.ScheduleEvent((int)CYCLES_PER_FRAME, BUS.GPU.VblankEventCallback, Event.Vblank, 0);
+            Scheduler.ScheduleInitialEvent((int)CYCLES_PER_FRAME, BUS.GPU.VblankEventCallback, Event.Vblank);
         }
-        
+
         public void TickFrame() {
             ulong currentTime = CPU_Struct_Ptr->CurrentCycle;
             ulong endFrameTime = currentTime + CYCLES_PER_FRAME;
@@ -131,14 +131,14 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public void Run() {
-            if (CPU_Struct_Ptr->PC == 0x80030000) {
+            /*if (CPU_Struct_Ptr->PC == 0x80030000) {
                 if (IsLoadingEXE) {
                     IsLoadingEXE = false;
                     loadTestRom(EXEPath);                   
                 }
             }
 
-            TTY(CPU_Struct_Ptr->PC);
+            TTY(CPU_Struct_Ptr->PC);*/
 
             bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, isBios);

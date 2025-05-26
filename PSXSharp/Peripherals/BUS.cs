@@ -1,4 +1,5 @@
-﻿using PSXSharp.Core.x64_Recompiler;
+﻿using ABI.Windows.Devices.PointOfService;
+using PSXSharp.Core.x64_Recompiler;
 using PSXSharp.Peripherals.IO;
 using PSXSharp.Peripherals.MDEC;
 using PSXSharp.Peripherals.Timers;
@@ -271,6 +272,7 @@ namespace PSXSharp {
 
             uint address = ch.read_base_addr() & 0x1ffffc;
             int LinkedListMax = 0xFFFF;     //A hacky way to get out of infinite list transfares
+
             while (LinkedListMax-- > 0) {
                 uint header = RAM.LoadWord(address);
                 uint num_of_words = header >> 24;
@@ -289,12 +291,16 @@ namespace PSXSharp {
                 address = header & 0x1ffffc;
             }
             ch.done();
-            if (((DMA.ch_irq_en >> 2) & 1) == 1) {
-                DMA.ch_irq_flags |= (byte)(1 << 2);
+
+            if (((DMA.ch_irq_en >> (int)ch.get_portnum()) & 1) == 1) {
+                DMA.ch_irq_flags |= (byte)(1 << (int)ch.get_portnum());
             }
+
             if (DMA.IRQRequest() == 1) {
-                IRQ_CONTROL.IRQsignal(3);
-            };
+                //IRQ_CONTROL.IRQsignal(3);   //Instant IRQ may cause problems
+                Scheduler.ScheduleEvent(0, Callback, Event.DMA);
+            }
+            
         }
 
         private void HandleDMA(ref DMAChannel activeCH) {
@@ -384,13 +390,13 @@ namespace PSXSharp {
         }
 
         public void Tick(int cycles) {
-           //Timer0.SystemClockTick(cycles);
-           //Timer1.SystemClockTick(cycles);
-           //Timer2.SystemClockTick(cycles);
-           //SPU.SPU_Tick(cycles);
-           //GPU.Tick(cycles * GPU_FACTOR);
-           //CDROM.tick(cycles);
-           // JOY_IO.Tick(cycles);
+            //Timer0.SystemClockTick(cycles);
+            //Timer1.SystemClockTick(cycles);
+            //Timer2.SystemClockTick(cycles);
+            //SPU.SPU_Tick(cycles);
+            //GPU.Tick(cycles * GPU_FACTOR);
+            //CDROM.tick(cycles);
+            // JOY_IO.Tick(cycles);
         }
 
         public void DMAIRQ() {
