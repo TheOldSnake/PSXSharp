@@ -1,7 +1,6 @@
 ﻿using PSXSharp.Core;
 using PSXSharp.Core.Common;
 using PSXSharp.Core.MSIL_Recompiler;
-using PSXSharp.Core.x64_Recompiler;
 using System;
 using System.Collections.Generic;
 using System.IO;

@@ -1,4 +1,4 @@
-﻿using PSXSharp.Core.x64_Recompiler;
+﻿using PSXSharp.Core;
 using PSXSharp.Peripherals.GPU;
 using PSXSharp.Peripherals.Timers;
 using System;

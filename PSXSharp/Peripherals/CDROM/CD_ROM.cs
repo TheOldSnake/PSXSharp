@@ -1,4 +1,4 @@
-﻿using PSXSharp.Core.x64_Recompiler;
+﻿using PSXSharp.Core;
 using System;
 using System.Collections.Generic;
 

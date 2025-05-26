@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace PSXSharp.Core.x64_Recompiler {
+namespace PSXSharp.Core {
     public static class Scheduler {
         private static List<ScheduledEvent> ScheduledEvents = [];
         private static ScheduledEvent CPUHeldEvent;

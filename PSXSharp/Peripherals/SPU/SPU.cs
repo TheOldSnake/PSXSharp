@@ -1,5 +1,5 @@
 ﻿using NAudio.Wave;
-using PSXSharp.Core.x64_Recompiler;
+using PSXSharp.Core;
 using PSXSharp.Peripherals.SPU;
 using System;
 using System.Runtime.InteropServices;

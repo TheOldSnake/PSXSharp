@@ -1,5 +1,5 @@
 ﻿using ABI.Windows.Devices.PointOfService;
-using PSXSharp.Core.x64_Recompiler;
+using PSXSharp.Core;
 using PSXSharp.Peripherals.IO;
 using PSXSharp.Peripherals.MDEC;
 using PSXSharp.Peripherals.Timers;
