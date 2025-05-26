@@ -202,47 +202,8 @@ namespace PSXSharp {
             return status;
         }
 
-        public void Tick(double cycles) {
-            VideoCycles += cycles;
-            DotClock += cycles;
-            if (DotClock > CyclesPerPixel) {
-                DotClock -= CyclesPerPixel;
-                TIMER0.DotClock();
-            }
-
-            TIMER0.HblankOut();
-            TIMER1.VblankOut();
-
-            if (VideoCycles >= VideoCyclesPerScanline) {
-                VideoCycles -= VideoCyclesPerScanline;
-                Scanlines++;
-
-                if (Scanlines >= ScanlinesPerFrame) {
-                    Scanlines -= ScanlinesPerFrame;
-
-                    if (!DisplayDisabled) {
-                        Renderer.Display();
-                    }
-                    if (VerticalRes == VerticalResolution.Y480Lines) {
-                        CurrentLine = (CurrentLine + 1) & 1;
-                    }
-
-                    IRQ_CONTROL.IRQsignal(0);     //VBLANK
-                    Interrupt = true;
-                    TIMER1.VblankTick();
-                }
-                
-                TIMER0.HblankTick();
-                TIMER1.HblankTick();
-    
-                if (VerticalRes == VerticalResolution.Y240Lines) {
-                    CurrentLine = (CurrentLine + 1) & 1;
-                }
-            }
-        }
-
-        const int CPUCyclesPerFrame = 565047;   // = ~ 33868899 / 59.940
-        const int CPUCyclesPerHblank = 2149;    // = ~ 565047 / 263
+        const int CPUCyclesPerFrame = 564482;   // = ~ 33868899 / 60
+        const int CPUCyclesPerHblank = 2146;    // = ~ 564482 / 263
 
         public Action VblankEventCallback;
         public Action HblankEventCallback;

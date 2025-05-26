@@ -389,20 +389,9 @@ namespace PSXSharp {
             };
         }
 
-        public void Tick(int cycles) {
-            //Timer0.SystemClockTick(cycles);
-            //Timer1.SystemClockTick(cycles);
-            //Timer2.SystemClockTick(cycles);
-            //SPU.SPU_Tick(cycles);
-            //GPU.Tick(cycles * GPU_FACTOR);
-            //CDROM.tick(cycles);
-            // JOY_IO.Tick(cycles);
-        }
-
         public void DMAIRQ() {
             IRQ_CONTROL.IRQsignal(3);
         }
-
     }
 }
 

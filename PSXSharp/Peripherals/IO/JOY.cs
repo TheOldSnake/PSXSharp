@@ -150,18 +150,6 @@ namespace PSXSharp.Peripherals.IO {
             StoreHalf(address, data); //Could be very wrong
         }
 
-        public void Tick(int cycles) {
-            if (Delay > 0) {
-                Delay -= cycles;
-                if (Delay <= 0) {
-                    Status.AckLevel = 0;
-                    Status.InterruptRequest = 1;
-                    Status.TX_Idle = 1;           
-                    IRQ_CONTROL.IRQsignal(7);
-                }
-            }
-        }
-
         public void JOYEvent() {
             Status.InterruptRequest = 1;
             Status.TX_Idle = 1;
