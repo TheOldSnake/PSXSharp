@@ -55,7 +55,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             BUS = bus;
             GTE = new GTE();
             CurrentBlock = new x64CacheBlock();
-            MemoryManager = NativeMemoryManager.GetOrCreateMemoryManager();
+            MemoryManager = NativeMemoryManager.GetMemoryManager();
             IsLoadingEXE = isEXE;
             this.EXEPath = EXEPath;
             Reset();
@@ -274,7 +274,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             Span<byte> emittedCode = new Span<byte>(stream.GetBuffer()).Slice(0, endOfBlockIndex);
 
             //Pass the old pointer and size. We need them for best fit allocation of next blocks
-            NativeMemoryManager manager = NativeMemoryManager.GetOrCreateMemoryManager();           //Get the instance, or make the instance static
+            NativeMemoryManager manager = NativeMemoryManager.GetMemoryManager();           //Get the instance, or make the instance static
             block.FunctionPointer = manager.WriteExecutableBlock(ref emittedCode);
             block.SizeOfAllocatedBytes = emittedCode.Length;      //Update the size to the new one
             block.IsCompiled = true;
