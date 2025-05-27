@@ -33,15 +33,15 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         double CyclesDone = 0;
 
-        bool IsReadingFromBIOS => (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
-        x64CacheBlock[] CurrentCache => IsReadingFromBIOS ? BIOS_CacheBlocks : RAM_CacheBlocks;
+        bool IsBIOSBlock => (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
 
         public static BUS BUS;
         public static GTE GTE;
 
         public static x64CacheBlock[] BIOS_CacheBlocks;
         public static x64CacheBlock[] RAM_CacheBlocks;
- 
+        x64CacheBlock[] CurrentCache => IsBIOSBlock ? BIOS_CacheBlocks : RAM_CacheBlocks;
+
         public NativeMemoryManager MemoryManager;
         private static CPU_x64_Recompiler Instance;
 
@@ -136,7 +136,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             TTY(CPU_Struct_Ptr->PC);*/
 
-            uint block = GetBlockAddress(CPU_Struct_Ptr->PC, IsReadingFromBIOS);
+            uint block = GetBlockAddress(CPU_Struct_Ptr->PC, IsBIOSBlock);
             CurrentCache[block].FunctionPointer();
         }
 
