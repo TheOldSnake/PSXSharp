@@ -27,7 +27,6 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static byte* ExecutableMemoryBase;
         private byte* AddressOfNextBlock;
         private CPUNativeStruct* CPU_Struct_Ptr;
-        private x64CacheBlocksStruct* x64CacheBlocksStructs;
 
         private static NativeMemoryManager Instance;
 
@@ -36,14 +35,6 @@ namespace PSXSharp.Core.x64_Recompiler {
         private List<(ulong address, int size)> InvalidBlocks;
         private bool IsInvalidBlocksSorted = true;
         private int InvalidBlocksTotalSize = 0;
-
-        //Precompiled RegisterTransfare Function
-        public static void* RegisterTransfare;
-        private int RegisterTransfareSize;
-
-        //Function poitner to emitted dispatcher
-        public static void* Dispatcher;
-        private int DispatcherSize;
 
         //Dummy Code to call recompiler
         public static void* StubBlock;
@@ -56,7 +47,6 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //Allocate memory for the main cpu struct in the unmanaged heap for the native code to read/write
             CPU_Struct_Ptr = (CPUNativeStruct*)NativeMemory.AllocZeroed((nuint)sizeof(CPUNativeStruct));
-            x64CacheBlocksStructs = (x64CacheBlocksStruct*)NativeMemory.AllocZeroed((nuint)sizeof(x64CacheBlocksStruct));
 
             InvalidBlocks = new List<(ulong address, int size)>();
 
@@ -65,7 +55,6 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public void Reset() {
             NativeMemory.Clear(CPU_Struct_Ptr, (nuint)sizeof(CPUNativeStruct));
-            NativeMemory.Clear(x64CacheBlocksStructs, (nuint)sizeof(x64CacheBlocksStruct));
             NativeMemory.Clear(ExecutableMemoryBase, SIZE_OF_EXECUTABLE_MEMORY);
             AddressOfNextBlock = ExecutableMemoryBase;
             InvalidBlocks.Clear();
@@ -83,25 +72,10 @@ namespace PSXSharp.Core.x64_Recompiler {
             return CPU_Struct_Ptr;
         }
 
-        public x64CacheBlocksStruct* GetCacheBlocksStructPtr() {
-            return x64CacheBlocksStructs;
-        }
-
         public static byte* AllocateGuestMemory() {
             GuestMemory = (byte*)NativeMemory.AllocZeroed(CPU_x64_Recompiler.RAM_SIZE);
             return GuestMemory;
         }
-
-        /*public delegate* unmanaged[Stdcall] <void> CompileDispatcher() {
-            Span<byte> emittedCode = x64_JIT.EmitDispatcher();
-            DispatcherSize = emittedCode.Length;
-            Dispatcher = VirtualAlloc(null, DispatcherSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-            fixed (byte* blockPtr = &emittedCode[0]) {
-                NativeMemory.Copy(blockPtr, Dispatcher, (nuint)emittedCode.Length);
-            }
-
-            return (delegate* unmanaged[Stdcall]<void>)Dispatcher;
-        }*/
 
         public delegate* unmanaged[Stdcall]<void> CompileStubBlock() {
             Span<byte> emittedCode = x64_JIT.EmitStubBlock();
@@ -209,23 +183,16 @@ namespace PSXSharp.Core.x64_Recompiler {
                 }
 
                 //Free unmanaged resources (unmanaged objects) and override finalizer
-                VirtualFree(ExecutableMemoryBase, SIZE_OF_EXECUTABLE_MEMORY, MEM_RELEASE);  
-                VirtualFree(RegisterTransfare, RegisterTransfareSize, MEM_RELEASE);
-                VirtualFree(Dispatcher, DispatcherSize, MEM_RELEASE);
+                VirtualFree(ExecutableMemoryBase, SIZE_OF_EXECUTABLE_MEMORY, MEM_RELEASE);            
                 VirtualFree(StubBlock, StubBlockSize, MEM_RELEASE);
 
-
                 NativeMemory.Free(CPU_Struct_Ptr);
-                NativeMemory.Free(x64CacheBlocksStructs);
                 NativeMemory.Free(GuestMemory);
 
                 ExecutableMemoryBase = null;
                 AddressOfNextBlock = null;
                 CPU_Struct_Ptr = null;
-                x64CacheBlocksStructs = null;
-                RegisterTransfare = null;
                 GuestMemory = null;
-                Dispatcher = null;
                 StubBlock = null;
 
                 disposedValue = true;
@@ -241,30 +208,5 @@ namespace PSXSharp.Core.x64_Recompiler {
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-
-
-
-        /*private void UnlinkAllBlocks(x64CacheBlocksStruct* cacheBlocks) {
-            x64CacheBlockInternalStruct* bios = &cacheBlocks->BIOS_CacheBlocks[0];
-            x64CacheBlockInternalStruct* ram = &cacheBlocks->RAM_CacheBlocks[0];
-
-            uint biosCount = (BIOS_SIZE >> 2);
-            uint ramCount = (CPU_x64_Recompiler.RAM_SIZE >> 2);
-
-            for (int i = 0; i < biosCount; i++) {
-                if (bios[i].IsCompiled == 1) {
-                    bios[i].IsCompiled = 0;
-                    bios[i].FunctionPointer = 0;
-                }
-            }
-
-            for (int i = 0; i < ramCount; i++) {
-                if (ram[i].IsCompiled == 1) {
-                    ram[i].IsCompiled = 0;
-                    ram[i].FunctionPointer = 0;
-                }
-            }
-        }*/
-
     }
 }

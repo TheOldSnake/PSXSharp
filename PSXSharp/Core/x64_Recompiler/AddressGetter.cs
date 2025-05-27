@@ -83,16 +83,6 @@
             return (ulong)ptr;
         }
 
-        public static ulong GetIRQCheckAddress() {
-            delegate* unmanaged[Stdcall]<void> ptr = &CheckIRQInJIT;
-            return (ulong)ptr;
-        }
-
-        public static ulong GetBUSTickddress() {
-            delegate* unmanaged[Stdcall]<int, void> ptr = &BUSTickWrapper;
-            return (ulong)ptr;
-        }
-
         public static ulong GetBUSReadByteAddress() {
             delegate* unmanaged[Stdcall]<uint, byte> ptr = &BUSReadByteWrapper;
             return (ulong)ptr;
@@ -142,25 +132,5 @@
             delegate* unmanaged[Stdcall]<uint, void> ptr = &Print;
             return (ulong)ptr;
         }
-
-
-
-        //For assembly dispatcher -unused-
-        /*public static ulong GetBIOSCacheBlockAddress() {
-            return (ulong)&x64CacheBlocksStructs->BIOS_CacheBlocks;
-        }
-
-        public static ulong GetRAMCacheBlockAddress() {
-            return (ulong)&x64CacheBlocksStructs->RAM_CacheBlocks;
-        }
-
-        public static ulong GetRecompileBlockAddress() {
-            delegate* unmanaged[Stdcall]<x64CacheBlockInternalStruct*, uint*, void> ptr = &RecompileInJIT;
-            return (ulong)ptr;
-        }
-
-        public static ulong GetRegisterTransfareAddress() {
-            return (ulong)NativeMemoryManager.RegisterTransfare;
-        }*/
     }
 }
