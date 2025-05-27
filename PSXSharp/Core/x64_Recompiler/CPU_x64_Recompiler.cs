@@ -34,13 +34,13 @@ namespace PSXSharp.Core.x64_Recompiler {
         double CyclesDone = 0;
 
         bool IsReadingFromBIOS => (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
+        x64CacheBlock[] CurrentCache => IsReadingFromBIOS ? BIOS_CacheBlocks : RAM_CacheBlocks;
 
         public static BUS BUS;
         public static GTE GTE;
 
         public static x64CacheBlock[] BIOS_CacheBlocks;
         public static x64CacheBlock[] RAM_CacheBlocks;
-        public static x64CacheBlock CurrentBlock;
  
         public NativeMemoryManager MemoryManager;
         private static CPU_x64_Recompiler Instance;
@@ -54,7 +54,6 @@ namespace PSXSharp.Core.x64_Recompiler {
         private CPU_x64_Recompiler(bool isEXE, string? EXEPath, BUS bus) {           
             BUS = bus;
             GTE = new GTE();
-            CurrentBlock = new x64CacheBlock();
             MemoryManager = NativeMemoryManager.GetMemoryManager();
             IsLoadingEXE = isEXE;
             this.EXEPath = EXEPath;
@@ -137,31 +136,42 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             TTY(CPU_Struct_Ptr->PC);*/
 
-            bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
-            uint block = GetBlockAddress(CPU_Struct_Ptr->PC, isBios);
-            x64CacheBlock[] currentCache = isBios ? BIOS_CacheBlocks : RAM_CacheBlocks;
-            RunJIT(currentCache[block]);
-        }
-
-        private void RunJIT(x64CacheBlock block) {
-            block.FunctionPointer();
-            //int totalCycles = (int)(block.TotalCycles);
-            //return totalCycles;
+            uint block = GetBlockAddress(CPU_Struct_Ptr->PC, IsReadingFromBIOS);
+            CurrentCache[block].FunctionPointer();
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static ulong StubBlockHandler() {
             //Code to be called in all non compiled blocks
+
             bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, isBios);
-            x64CacheBlock[] currentCache = isBios ? BIOS_CacheBlocks : RAM_CacheBlocks;
+            int maskedAddress = (int)(CPU_Struct_Ptr->PC & 0x1FFFFFFF);
 
-            Recompile(block, CPU_Struct_Ptr->PC, isBios);
+            uint cyclesPerInstruction;
+            x64CacheBlock currentBlock;
+            ReadOnlySpan<byte> rawMemory;
+            ReadOnlySpan<uint> instructionMemory;
+
+            if (isBios) {
+                cyclesPerInstruction = 22;
+                currentBlock = BIOS_CacheBlocks[block];
+                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.GetMemoryReference()).Slice((int)(maskedAddress - BIOS_START));
+                instructionMemory = MemoryMarshal.Cast<byte, uint>(rawMemory);
+            } else {
+                cyclesPerInstruction = 2;
+                currentBlock = RAM_CacheBlocks[block];
+                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice(maskedAddress);
+                instructionMemory = MemoryMarshal.Cast<byte, uint>(rawMemory);
+            }
+
+            currentBlock.Address = CPU_Struct_Ptr->PC;
+            Recompile(currentBlock, instructionMemory, cyclesPerInstruction);
 
             //After compilation we need to clear our actual CPU cache for that address
-            FlushInstructionCache(ProcessHandle, (nint)currentCache[block].FunctionPointer, (nuint)currentCache[block].SizeOfAllocatedBytes);
+            FlushInstructionCache(ProcessHandle, (nint)currentBlock.FunctionPointer, (nuint)currentBlock.SizeOfAllocatedBytes);
             //Return the address to be called in asm
-            return (ulong)currentCache[block].FunctionPointer;  
+            return (ulong)currentBlock.FunctionPointer;  
         }
 
         public void SetInvalidAllRAMBlocks() {
@@ -188,31 +198,11 @@ namespace PSXSharp.Core.x64_Recompiler {
             //middle of a function then jumps to the beginning
         }
 
-        private static void Recompile(uint block, uint pc, bool isBios) {
+        private static void Recompile(x64CacheBlock cacheBlock, ReadOnlySpan<uint> instructionsSpan, uint cyclesPerInstruction) {
             Instruction instruction = new Instruction();
             Assembler emitter = new Assembler(64);
             Label endOfBlock = emitter.CreateLabel();
-            ReadOnlySpan<byte> rawMemory;
-            x64CacheBlock[] currentCache;
-            uint cyclesPerInstruction;
-            int maskedAddress = (int)(pc & 0x1FFFFFFF);
             bool end = false;
-
-            if (isBios) {
-                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.GetMemoryReference()).Slice((int)(maskedAddress - BIOS_START));
-                currentCache = BIOS_CacheBlocks;
-                cyclesPerInstruction = 22;
-            } else {
-                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice(maskedAddress);
-                currentCache = RAM_CacheBlocks;
-                cyclesPerInstruction = 2;
-            }
-
-            ReadOnlySpan<uint> instructionsSpan = MemoryMarshal.Cast<byte, uint>(rawMemory);
-
-            CurrentBlock = currentCache[block];
-            CurrentBlock.Address = pc;
-
             int instructionIndex = 0;
 
             x64_JIT.EmitBlockEntry(emitter);
@@ -230,11 +220,10 @@ namespace PSXSharp.Core.x64_Recompiler {
                 //We end the block if any of these conditions is true
                 //Note that syscall and break are immediate exceptions and they don't have delay slot
 
-                if (end || instructionIndex > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {                    
-                    CurrentBlock.TotalCycles = (uint)(instructionIndex * cyclesPerInstruction);                  
+                if (end || instructionIndex > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {
+                    cacheBlock.TotalCycles = (uint)(instructionIndex * cyclesPerInstruction);                  
                     x64_JIT.TerminateBlock(emitter, ref endOfBlock);
-                    AssembleAndLinkPointer(emitter, ref endOfBlock, ref CurrentBlock);
-                    currentCache[block] = CurrentBlock;
+                    AssembleAndLinkPointer(emitter, ref endOfBlock, ref cacheBlock);
                     //Console.WriteLine("Compiled: " + pc.ToString("x") + " - " + CurrentBlock.TotalMIPS_Instructions + " Instructions");
                     return;
                 }
@@ -507,7 +496,6 @@ namespace PSXSharp.Core.x64_Recompiler {
                     MemoryManager.Dispose();
 
                     MemoryManager = null;
-                    CurrentBlock.FunctionPointer = null;
 
                     foreach (x64CacheBlock block in BIOS_CacheBlocks) {
                         block.FunctionPointer = null;
