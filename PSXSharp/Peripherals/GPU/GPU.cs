@@ -1,4 +1,5 @@
-﻿using PSXSharp.Peripherals.GPU;
+﻿using PSXSharp.Core;
+using PSXSharp.Peripherals.GPU;
 using PSXSharp.Peripherals.Timers;
 using System;
 using System.Collections.Generic;
@@ -108,6 +109,7 @@ namespace PSXSharp {
         int CyclesPerPixel = 4;                  //x=640 (maybe wrong lol)
         double DotClock = 0;
 
+
         public GPU(Renderer rederingWindow, ref Timer0 timer0, ref Timer1 timer1) {
             PageBaseX = 0;
             PageBaseY = 0;
@@ -129,6 +131,8 @@ namespace PSXSharp {
             Renderer = rederingWindow;
             TIMER0 = timer0;
             TIMER1 = timer1;
+            VblankEventCallback = VblankEvent;
+            HblankEventCallback = HblankEvent;
         }
 
         public uint ReadGPUSTAT() { //TODO make this more accurate depending on GPU state
@@ -194,49 +198,43 @@ namespace PSXSharp {
 
             status |= ((uint)dma_request) << 25;
 
-            //return 0b01011110100000000000000000000000;
+            //return 0b0101_1110_1000_0000_0000_0000_0000_0000;
             return status;
         }
 
-        public void Tick(double cycles) {
-            VideoCycles += cycles;
-            DotClock += cycles;
-            if (DotClock > CyclesPerPixel) {
-                DotClock -= CyclesPerPixel;
-                TIMER0.DotClock();
+        const int CPUCyclesPerFrame = 564482;   // = ~ 33868899 / 60
+        const int CPUCyclesPerHblank = 2146;    // = ~ 564482 / 263
+
+        public Action VblankEventCallback;
+        public Action HblankEventCallback;
+
+        public void VblankEvent() {
+            if (!DisplayDisabled) {
+                Renderer.Display();
             }
 
-            TIMER0.HblankOut();
-            TIMER1.VblankOut();
-
-            if (VideoCycles >= VideoCyclesPerScanline) {
-                VideoCycles -= VideoCyclesPerScanline;
-                Scanlines++;
-
-                if (Scanlines >= ScanlinesPerFrame) {
-                    Scanlines -= ScanlinesPerFrame;
-
-                    if (!DisplayDisabled) {
-                        Renderer.Display();
-                    }
-                    if (VerticalRes == VerticalResolution.Y480Lines) {
-                        CurrentLine = (CurrentLine + 1) & 1;
-                    }
-
-                    IRQ_CONTROL.IRQsignal(0);     //VBLANK
-                    Interrupt = true;
-                    TIMER1.VblankTick();
-                }
-                
-                TIMER0.HblankTick();
-                TIMER1.HblankTick();
-    
-                if (VerticalRes == VerticalResolution.Y240Lines) {
-                    CurrentLine = (CurrentLine + 1) & 1;
-                }
+            //In 480-lines mode, bit31 changes per frame.
+            if (VerticalRes == VerticalResolution.Y480Lines) {
+                CurrentLine = (CurrentLine + 1) & 1;
             }
-        }  
-        
+
+            IRQ_CONTROL.IRQsignal(0);     //VBLANK
+            Interrupt = true;
+            TIMER1.VblankTick();
+            Scheduler.ScheduleEvent(CPUCyclesPerFrame, VblankEventCallback, Event.Vblank);
+        }
+
+        public void HblankEvent() {
+
+            //In 240-lines mode, the bit changes per scanline. 
+            if (VerticalRes == VerticalResolution.Y240Lines) {
+                CurrentLine = (CurrentLine + 1) & 1;
+                Scheduler.ScheduleEvent(CPUCyclesPerHblank, HblankEventCallback, Event.Hblank);
+            }
+
+            //We should also handle TIMER 0 sync 
+        }
+
         public void WriteGP0(uint value) {
 
             switch (currentState) {
@@ -486,10 +484,20 @@ namespace PSXSharp {
         private void GP1DisplayMode(uint value) {
             HorizontalResolution1 = (byte)(value & 3);
             HorizontalResolution2 = (byte)((value >> 6) & 1);
-            byte interlace = (byte)((value >> 5) & 1);
+            Interlaced = ((value >> 5) & 1) == 1;
 
+            VerticalResolution oldVR = VerticalRes;
+            VerticalRes = Interlaced ? (VerticalResolution)((value >> 2) & 1) : VerticalResolution.Y240Lines;
+
+            if (VerticalRes != oldVR) {
+                if (VerticalRes == VerticalResolution.Y240Lines && !Scheduler.HasEventOfType(Event.Hblank)) {
+                    Scheduler.ScheduleEvent(CPUCyclesPerHblank, HblankEventCallback, Event.Hblank);
+
+                } else if (VerticalRes == VerticalResolution.Y480Lines && Scheduler.HasEventOfType(Event.Hblank)) {
+                    Scheduler.FlushEvents(Event.Hblank);
+                }
+            }
             
-            VerticalRes = (VerticalResolution)(((value >> 2) & 1) & interlace);
             VMode = (VideoMode)((value >> 3) & 1);
 
             if (VMode == VideoMode.PAL) {
@@ -501,8 +509,6 @@ namespace PSXSharp {
                 VideoCyclesPerScanline = 3413.6;
             }
            
-            Interlaced = (value & 0x20) != 0;
-
             if ((value & 0x80) != 0) {
                 throw new Exception("Unsupported display mode: " + value.ToString("X"));
             }
@@ -578,7 +584,10 @@ namespace PSXSharp {
             currentState = GPUState.Idle;
             CurrentLine = 0;
 
-            //...Clear Fifo
+            //Since we reset to Vertical Resolution = 240 we need to schedule hblank
+            if (!Scheduler.HasEventOfType(Event.Hblank)) {
+                Scheduler.ScheduleEvent(CPUCyclesPerHblank, HblankEventCallback, Event.Hblank);
+            }
 
             Renderer.DisableBlending();
             //Probably more window reset stuff

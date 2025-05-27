@@ -13,6 +13,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         //Get all needed fields and methods
         private static FieldInfo? GPR = typeof(CPU_MSIL_Recompiler).GetField("GPR");
+        private static FieldInfo? CurrentCycle = typeof(CPU_MSIL_Recompiler).GetField("CurrentCycle");
 
         private static FieldInfo? DirectWrite = typeof(CPU_MSIL_Recompiler).GetField("DirectWrite");
         private static FieldInfo? DelayedWrite = typeof(CPU_MSIL_Recompiler).GetField("DelayedRegisterLoad");     //For memory access
@@ -1431,6 +1432,21 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
            // il.Emit(OpCodes.Ldarg, 0);
            // il.Emit(OpCodes.Call, SavePCMeth);
+        }
+
+        public static void UpdateCurrentCycle(MSILCacheBlock cache, int cyclesPerInstruction) {
+            ILGenerator il = cache.IL_Emitter;
+            LocalBuilder result = il.DeclareLocal(typeof(ulong));
+
+            il.Emit(OpCodes.Ldarg, 0);
+            il.Emit(OpCodes.Ldfld, CurrentCycle);
+            il.Emit(OpCodes.Ldc_I4, cyclesPerInstruction);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, result.LocalIndex);
+
+            il.Emit(OpCodes.Ldarg, 0);
+            il.Emit(OpCodes.Ldloc, result.LocalIndex);
+            il.Emit(OpCodes.Stfld, CurrentCycle);
         }
 
         public static void EmitRet(MSILCacheBlock cache) {

@@ -9,6 +9,7 @@ namespace PSXSharp.Core {
 
         public abstract void SetInvalidRAMBlock(uint block);
         public abstract double GetSpeed();
+        public abstract ulong GetCurrentCycle();
         public ref BUS GetBUS();
 
         //R3000 Registers

@@ -1,6 +1,4 @@
 ﻿using PSXSharp.Core;
-using PSXSharp.Core.x64_Recompiler;
-using System;
 
 namespace PSXSharp {
     public class CACHECONTROL {

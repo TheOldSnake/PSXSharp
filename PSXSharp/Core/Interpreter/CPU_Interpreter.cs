@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 using static PSXSharp.Core.CPU;
 
@@ -54,7 +53,9 @@ namespace PSXSharp.Core.Interpreter {
 
         const uint CYCLES_PER_SECOND = 33868800;
         const uint CYCLES_PER_FRAME = CYCLES_PER_SECOND / 60;
+        const int CYCLES_PER_SPU_SAMPLE = 0x300;
 
+        ulong CurrentCycle = 0;
         double CyclesDone = 0;
 
         List<byte> Chars = new List<byte>();    //Temporarily stores characters 
@@ -108,10 +109,18 @@ namespace PSXSharp.Core.Interpreter {
             DelaySlot = false;
             IsLoadingEXE = isEXE;
             this.EXEPath = EXEPath;
+
+            //Scheduler is static, make sure to clear it when resetting
+            Scheduler.FlushAllEvents();
+
+            //Schedule 1 initial SPU event
+            Scheduler.ScheduleInitialEvent(CYCLES_PER_SPU_SAMPLE, BUS.SPU.SPUCallback, Event.SPU);
+
+            //Schedule 1 initial vblank event
+            Scheduler.ScheduleInitialEvent((int)CYCLES_PER_FRAME, BUS.GPU.VblankEventCallback, Event.Vblank);
         }
        
         public void emu_cycle() {
-
             Current_PC = PC;   //Save current pc In case of an exception
             Intercept(PC);     //For TTY
 
@@ -126,10 +135,7 @@ namespace PSXSharp.Core.Interpreter {
                     return;
                  }
              }
-            if (PC == 0xA0 && GPR[9] == 0x44) {
-                Console.WriteLine("Flush Cache");
-            }
-
+    
             //PC must be 32 bit aligned, can be ignored?
             if ((Current_PC & 0x3) != 0) {
                 Exception(this, (uint)CPU.Exceptions.LoadAddressError);
@@ -144,6 +150,16 @@ namespace PSXSharp.Core.Interpreter {
             PC = Next_PC;
             Next_PC = Next_PC + 4;
 
+            /*if (BUS.debug) {
+                Console.WriteLine("[" + Current_PC.ToString("x").PadLeft(8, '0') + "]" + " --- " + CurrentInstruction.Getfull().ToString("x").PadLeft(8,'0'));
+            }*/
+    
+            ExecuteInstruction(CurrentInstruction);
+            RegisterTransfer(this);
+            CurrentCycle += (ulong)(IsReadingFromBIOS ? 22 : 2); ;
+        }
+
+        private void IRQCheck() {
             if (IRQ_CONTROL.isRequestingIRQ()) {  //Interrupt check 
                 Cop0.Cause |= 1 << 10;
 
@@ -153,12 +169,6 @@ namespace PSXSharp.Core.Interpreter {
                     return;
                 }
             }
-            /*if (BUS.debug) {
-                Console.WriteLine("[" + Current_PC.ToString("x").PadLeft(8, '0') + "]" + " --- " + CurrentInstruction.Getfull().ToString("x").PadLeft(8,'0'));
-            }*/
-    
-            ExecuteInstruction(CurrentInstruction);
-            RegisterTransfer(this);
         }
 
         private bool InstructionIsGTE(CPU_Interpreter cpu) {          
@@ -737,6 +747,14 @@ namespace PSXSharp.Core.Interpreter {
 
             cpu.Cop0.EPC = cpu.Current_PC;                 //Save the current PC in register EPC
 
+            //Hack
+            if (exceptionCause == (int)CPU.Exceptions.IRQ) {
+                cpu.Cop0.EPC = cpu.PC;           //Save the PC in register EPC
+                cpu.DelaySlot = cpu.Branch;
+            } else {
+                cpu.Cop0.EPC = cpu.Current_PC;    //Save the current PC in register EPC                                                  
+            }
+
             if (cpu.DelaySlot) {                   //in case an exception occurs in a delay slot
                 cpu.Cop0.EPC -= 4;
                 cpu.Cop0.Cause = (uint)(cpu.Cop0.Cause | 1 << 31);
@@ -1169,19 +1187,28 @@ namespace PSXSharp.Core.Interpreter {
             cpu.Next_PC = cpu.Next_PC - 4;        //Cancel the +4 from the emu cycle 
             cpu.Branch = true;    
         }
-     
+
         public void TickFrame() {
-            if (IsStopped) { return; }
-            for (int i = 0; i < CYCLES_PER_FRAME;) {
-                int add = IsReadingFromBIOS ? 22 : 2;
-                emu_cycle();
+            ulong currentTime = CurrentCycle;
+            ulong endFrameTime = currentTime + CYCLES_PER_FRAME;
 
-                Cycles += add;
-                BUS.Tick(Cycles);
+            while (currentTime < endFrameTime) {
+                //Get the next event
+                ScheduledEvent nextEvent = Scheduler.DequeueNearestEvent();
 
-                i += Cycles;
-                Cycles = 0;
+                //Run the CPU until the event
+                while (CurrentCycle < nextEvent.EndTime) {
+                    emu_cycle();
+                }
+
+                //Handle the ready event and check for interrupts
+                nextEvent.Callback();
+                IRQCheck();
+
+                //Update current time
+                currentTime = CurrentCycle;
             }
+
             CyclesDone += CYCLES_PER_FRAME;
         }
 
@@ -1213,6 +1240,10 @@ namespace PSXSharp.Core.Interpreter {
         public void SetInvalidAllBIOSBlocks() {
             //Unsupported
             return;
+        }
+
+        public ulong GetCurrentCycle() {
+            return CurrentCycle;
         }
     }
 }

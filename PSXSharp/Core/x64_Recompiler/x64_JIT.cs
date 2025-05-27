@@ -48,6 +48,8 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static int COP0_SR_Offset = (int)Marshal.OffsetOf<CPUNativeStruct>(nameof(CPUNativeStruct.COP0_SR));
         private static int COP0_Cause_Offset = (int)Marshal.OffsetOf<CPUNativeStruct>(nameof(CPUNativeStruct.COP0_Cause));
         private static int COP0_EPC_Offset = (int)Marshal.OffsetOf<CPUNativeStruct>(nameof(CPUNativeStruct.COP0_EPC));
+
+        private static int CurrentCycle_Offset = (int)Marshal.OffsetOf<CPUNativeStruct>(nameof(CPUNativeStruct.CurrentCycle));
         #endregion
 
         //Prints a register value to the console
@@ -1093,6 +1095,10 @@ namespace PSXSharp.Core.x64_Recompiler {
             //Current_PC = PC;
             asm.mov(eax, __dword_ptr[rbx + PCOffset]);
             asm.mov(__dword_ptr[rbx + CurrentPCOffset], eax);
+        }
+
+        public static void EmitUpdateCurrentCycle(Assembler asm, int addValue) {
+            asm.add(__qword_ptr[rbx + CurrentCycle_Offset], addValue);
         }
 
         public static void EmitBlockEntry(Assembler asm) {

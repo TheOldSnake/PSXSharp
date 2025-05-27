@@ -1,7 +1,6 @@
 ﻿using PSXSharp.Core;
 using PSXSharp.Core.Common;
 using PSXSharp.Core.MSIL_Recompiler;
-using PSXSharp.Core.x64_Recompiler;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -18,6 +17,7 @@ namespace PSXSharp {
 
         const uint CYCLES_PER_SECOND = 33868800;
         const uint CYCLES_PER_FRAME = CYCLES_PER_SECOND / 60;
+        const int CYCLES_PER_SPU_SAMPLE = 0x300;
 
         double CyclesDone = 0;  
 
@@ -55,8 +55,7 @@ namespace PSXSharp {
         //This is needed because writes to memory are ignored (well, not really) When cache is isolated
         public bool IscIsolateCache => (Cop0.SR & 0x10000) != 0;
 
-        //Counting how many cycles to clock the other peripherals
-        public static int Cycles = 0;
+        public static ulong CurrentCycle = 0;
 
         private byte[] EXE;
         private bool IsLoadingEXE;
@@ -120,6 +119,15 @@ namespace PSXSharp {
             for (int i = 0; i < RAM_CacheBlocks.Length; i++) {
                 RAM_CacheBlocks[i] = new MSILCacheBlock();
             }
+
+            //Scheduler is static, make sure to clear it when resetting
+            Scheduler.FlushAllEvents();
+
+            //Schedule 1 initial SPU event
+            Scheduler.ScheduleInitialEvent(0x300, BUS.SPU.SPUCallback, Event.SPU);
+
+            //Schedule 1 initial vblank event
+            Scheduler.ScheduleInitialEvent(CYCLES_PER_SPU_SAMPLE, BUS.GPU.VblankEventCallback, Event.Vblank);
         }
 
         public int emu_cycle() {
@@ -160,7 +168,7 @@ namespace PSXSharp {
 
             for (;;) {
                 instruction.FullValue = instructionsSpan[instructionIndex++];
-                EmitInstruction(instruction);
+                EmitInstruction(instruction, cycleMultiplier);
 
                 //We end the block if any of these conditions is true
                 //Note that syscall and break are immediate exceptions and they don't have delay slot
@@ -188,7 +196,7 @@ namespace PSXSharp {
             return totalCycles;
         }
 
-        public void EmitInstruction(Instruction instruction) {
+        public void EmitInstruction(Instruction instruction, int cyclesPerInstruction) {
             MSIL_JIT.EmitSavePC(CurrentBlock);
             MSIL_JIT.EmitBranchDelayHandler(CurrentBlock);
 
@@ -200,6 +208,7 @@ namespace PSXSharp {
             CurrentBlock.Checksum += instruction.FullValue;
             CurrentBlock.Total++;
             MSIL_JIT.EmitRegisterTransfare(CurrentBlock);
+            MSIL_JIT.UpdateCurrentCycle(CurrentBlock, cyclesPerInstruction);
         }
 
         private bool IsInvalidBlock(uint block, bool isBios) {
@@ -461,12 +470,26 @@ namespace PSXSharp {
         }
 
         public void TickFrame() {
-            for (int i = 0; i < CYCLES_PER_FRAME;) { 
-                int add = emu_cycle();
-                i += add;
-                BUS.Tick(add);
+            ulong currentTime = CurrentCycle;
+            ulong endFrameTime = currentTime + CYCLES_PER_FRAME;
+
+            while (currentTime < endFrameTime) {
+                //Get the next event
+                ScheduledEvent nextEvent = Scheduler.DequeueNearestEvent();
+
+                //Run the CPU until the event
+                while (CurrentCycle < nextEvent.EndTime) {
+                    emu_cycle();
+                }
+
+                //Handle the ready event and check for interrupts
+                nextEvent.Callback();
                 IRQCheck(this);
+
+                //Update current time
+                currentTime = CurrentCycle;
             }
+
             CyclesDone += CYCLES_PER_FRAME;
         }
 
@@ -499,6 +522,10 @@ namespace PSXSharp {
             Parallel.For(0, BIOS_CacheBlocks.Length, i => {
                 BIOS_CacheBlocks[i].IsCompiled = false;
             });
+        }
+
+        public ulong GetCurrentCycle() {
+            return CurrentCycle;
         }
     }
 }

@@ -15,28 +15,62 @@ namespace PSXSharp.Peripherals.Timers {
         protected bool CounterReachedTarget;          //(0=No, 1=Yes) (Reset after Reading)
         protected bool CounterOverflowed;             //(0=No, 1=Yes) (Reset after Reading)
 
+        protected ulong ReadCycle;
         protected bool IsPaused;
         public Range Range;
 
+        protected bool ShouldReset = false;
+
         public uint Read(uint address) {
+           
             switch (address & 0xF) {
-                case 0: return (uint)CurrentValue;
+                case 0:
+                    LazyUpdate();
+                    uint temp = (uint)CurrentValue;
+
+                    if (ShouldReset) {
+                        Reset();                     
+                        ScheduleTargetEvent();
+                        ShouldReset = false;
+                    }
+
+                    return temp;
+
                 case 4: return ReadMode();
                 case 8: return Target;
                 default: throw new Exception("Unknown Timer Address:" + address.ToString("x"));
             }
         }
 
-        public void Write(uint address, uint value) {
+        public unsafe void Write(uint address, uint value) {
             /*
              Writing a Current value larger than the Target value will not trigger the condition of Mode Bit4, 
              but make the counter run until FFFFh and wrap around to 0000h once, before using the target value.
             */
-
+            //Console.WriteLine("@" + address.ToString("x") + " : " + value.ToString("x") + " - Timer " + ((address >> 4) & 0xF));
+     
             switch (address & 0xF) {
-                case 0: CurrentValue = (int)value; break;
+                case 0: 
+                    CurrentValue = (int)value;
+
+                    //Schedule IRQ if needed
+                    if (CurrentValue < Target) {
+                        if (!IsPaused) {
+                            if (IRQWhenReachedTarget || ResetWhenReachedTarget) {
+                                FlushTimerEvents();
+                                ScheduleTargetEvent();
+                            } else if (IRQWhenOverflow) {
+                                FlushTimerEvents();
+                                ScheduleOverflowEvent();
+                            }
+                        }
+                    }
+                    break;
+
                 case 4: ConfigureTimer(value); break;
-                case 8: Target = value; break;
+                case 8: 
+                    Target = value;     
+                    break;
                 default: throw new Exception("Unknown Timer Address:" + address.ToString("x"));
             }
         }
@@ -53,6 +87,19 @@ namespace PSXSharp.Peripherals.Timers {
             IRQRequest = false;             //W=1? I assume on any write it will be reset to false (=1)
             Reset();                        //Writing the mode will force reset the current value
             IsPaused = false;
+
+            Synchronization();
+
+            //Schedule IRQ if needed
+            if (!IsPaused) {
+                if (IRQWhenReachedTarget) {
+                    FlushTimerEvents();
+                    ScheduleTargetEvent();
+                } else if (IRQWhenOverflow) {
+                    FlushTimerEvents();
+                    ScheduleOverflowEvent();
+                }
+            }
         }
 
         protected uint ReadMode() {
@@ -65,18 +112,26 @@ namespace PSXSharp.Peripherals.Timers {
             mode |= (uint)(IRQRepeat ? 1 : 0) << 6;
             mode |= (uint)(IRQToggleBit10 ? 1 : 0) << 7;
             mode |= ClockSource << 8;
-            mode |= (uint)(!IRQRequest ? 1 : 0) << 10;
+            mode |= (uint)((!IRQRequest) ? 1 : 0) << 10;
             mode |= (uint)(CounterReachedTarget ? 1 : 0) << 11;     //(Reset after Reading)
             mode |= (uint)(CounterOverflowed ? 1 : 0) << 12;        //(Reset after Reading)
             CounterReachedTarget = CounterOverflowed = false;
             return mode;
         }
 
-        protected void Reset() {
-            CurrentValue = 0;
-        }
-
+        protected abstract void Reset();
         protected abstract void Tick(int cycles);
+        public abstract void LazyUpdate();
+
         public abstract void SystemClockTick(int cycles);
+        public abstract void ScheduleTargetEvent();
+        public abstract void ScheduleOverflowEvent();
+
+        public abstract void TimerEventHandler(bool overflow);
+        public abstract void ReachedTarget();
+        public abstract void Overflowed();
+
+        public abstract void FlushTimerEvents();
+        public abstract void Synchronization();
     }
 }

@@ -1,13 +1,11 @@
 ﻿using Iced.Intel;
-using PSXSharp.Core.MSIL_Recompiler;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Instruction = PSXSharp.Core.Common.Instruction;
-using static Iced.Intel.AssemblerRegisters;
-using Label = Iced.Intel.Label;
 using System.Threading.Tasks;
+using Instruction = PSXSharp.Core.Common.Instruction;
+using Label = Iced.Intel.Label;
 
 namespace PSXSharp.Core.x64_Recompiler {
     public unsafe partial class CPU_x64_Recompiler : CPU, IDisposable {
@@ -31,6 +29,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         const uint CYCLES_PER_SECOND = 33868800;
         const uint CYCLES_PER_FRAME = CYCLES_PER_SECOND / 60;
+        const int CYCLES_PER_SPU_SAMPLE = 0x300;
 
         double CyclesDone = 0;
 
@@ -96,41 +95,61 @@ namespace PSXSharp.Core.x64_Recompiler {
                 RAM_CacheBlocks[i] = new x64CacheBlock();
                 RAM_CacheBlocks[i].FunctionPointer = StubBlockPointer;
             }
+
+            //Scheduler is static, make sure to clear it when resetting
+            Scheduler.FlushAllEvents();
+
+            //Schedule 1 initial SPU event
+            Scheduler.ScheduleInitialEvent(CYCLES_PER_SPU_SAMPLE, BUS.SPU.SPUCallback, Event.SPU);
+
+            //Schedule 1 initial vblank event
+            Scheduler.ScheduleInitialEvent((int)CYCLES_PER_FRAME, BUS.GPU.VblankEventCallback, Event.Vblank);
         }
 
         public void TickFrame() {
-            int blockCycles = 0;
+            ulong currentTime = CPU_Struct_Ptr->CurrentCycle;
+            ulong endFrameTime = currentTime + CYCLES_PER_FRAME;
 
-            for (int i = 0; i < CYCLES_PER_FRAME;) {
-                blockCycles = Run();
-                BUS.Tick(blockCycles);
+            while (currentTime < endFrameTime) {
+                //Get the next event
+                ScheduledEvent nextEvent = Scheduler.DequeueNearestEvent();
+
+                //Run the CPU until the event
+                while (CPU_Struct_Ptr->CurrentCycle < nextEvent.EndTime) {
+                    Run();                    
+                }
+
+                //Handle the ready event and check for interrupts
+                nextEvent.Callback();
                 IRQCheck();
-                i += blockCycles;
-            }
 
+                //Update current time
+                currentTime = CPU_Struct_Ptr->CurrentCycle;
+            }
+            
             CyclesDone += CYCLES_PER_FRAME;
         }
 
-        public int Run() {
+        public void Run() {
             /*if (CPU_Struct_Ptr->PC == 0x80030000) {
                 if (IsLoadingEXE) {
                     IsLoadingEXE = false;
                     loadTestRom(EXEPath);                   
                 }
-            }*/
+            }
 
-            //TTY(CPU_Struct_Ptr->PC);
+            TTY(CPU_Struct_Ptr->PC);*/
 
-            bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;           
+            bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, isBios);
             x64CacheBlock[] currentCache = isBios ? BIOS_CacheBlocks : RAM_CacheBlocks;
-            return RunJIT(currentCache[block]);
+            RunJIT(currentCache[block]);
         }
 
-        private int RunJIT(x64CacheBlock block) {
+        private void RunJIT(x64CacheBlock block) {
             block.FunctionPointer();
-            int totalCycles = (int)(block.TotalCycles + BUS.GetBusCycles());
-            return totalCycles;
+            //int totalCycles = (int)(block.TotalCycles);
+            //return totalCycles;
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -211,7 +230,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                     x64_JIT.EmitSavePC(emitter);  //Needed for the exception procedure
                 }
 
-                EmitInstruction(instruction, emitter);
+                EmitInstruction(instruction, emitter, cyclesPerInstruction);
 
                 //We end the block if any of these conditions is true
                 //Note that syscall and break are immediate exceptions and they don't have delay slot
@@ -231,18 +250,22 @@ namespace PSXSharp.Core.x64_Recompiler {
             }
         }        
 
-        public static void EmitInstruction(Instruction instruction, Assembler emitter) {
+        public static void EmitInstruction(Instruction instruction, Assembler emitter, uint cyclesPerInstruction) {
+            //Emit branch delay to keep PC registers up to date
             x64_JIT.EmitBranchDelayHandler(emitter);
 
-            //Don't compile NOPs
+            //Emit the actual instruction (we don't emit NOPs)
             if (instruction.FullValue != 0) {
                 x64_LUT.MainLookUpTable[instruction.GetOpcode()](instruction, emitter);
             }
 
+            //Emit the load delay handling
             x64_JIT.EmitRegisterTransfare(emitter);
-            //CurrentBlock.MIPS_Checksum += instruction.FullValue;
+
+            //Update the current cycle 
+            x64_JIT.EmitUpdateCurrentCycle(emitter, (int)cyclesPerInstruction);
         }
-    
+
         public static void AssembleAndLinkPointer(Assembler emitter, ref Label endOfBlockLabel, ref x64CacheBlock block) {
             MemoryStream stream = new MemoryStream();
             AssemblerResult result = emitter.Assemble(new StreamCodeWriter(stream), 0, BlockEncoderOptions.ReturnNewInstructionOffsets);
@@ -585,6 +608,10 @@ namespace PSXSharp.Core.x64_Recompiler {
             double returnValue = (CyclesDone / CYCLES_PER_SECOND) * 100;
             CyclesDone = 0;
             return returnValue;
+        }
+
+        public ulong GetCurrentCycle() {
+            return CPU_Struct_Ptr->CurrentCycle;
         }
 
         ~CPU_x64_Recompiler() {

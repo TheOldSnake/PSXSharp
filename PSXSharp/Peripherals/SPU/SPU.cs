@@ -1,4 +1,5 @@
 ﻿using NAudio.Wave;
+using PSXSharp.Core;
 using PSXSharp.Peripherals.SPU;
 using System;
 using System.Runtime.InteropServices;
@@ -103,6 +104,7 @@ namespace PSXSharp {
 
         /* Default wave format: 44,1kHz, 16 bit, stereo */
 
+        public Action SPUCallback;
         public SPU(ref CDROMDataController CDControl) {
            voices = new Voice[24];
            for (int i = 0; i < voices.Length; i++) { 
@@ -113,8 +115,9 @@ namespace PSXSharp {
             bufferedWaveProvider.BufferDuration = new TimeSpan(0, 0, 0, 0, 300);
             waveOutEvent.Init(bufferedWaveProvider);
             this.CDDataControl = CDControl;
-
+            SPUCallback = SPUEvent;
         }
+
         public void StoreHalf(uint address, UInt16 value) {
             uint offset = address - range.start;
             switch (offset) {
@@ -394,13 +397,8 @@ namespace PSXSharp {
 
         }
 
-      
-        public void SPU_Tick(int cycles) {        //SPU Clock
-         
-            clk_counter += cycles;
-            if (clk_counter < CYCLES_PER_SAMPLE || !SPUEnable) { return; }
+        public void SPUEvent() {        
             reverbCounter = (reverbCounter + 1) & 1;    //For half the frequency
-            clk_counter = 0;
 
             uint edgeKeyOn = KON;
             uint edgeKeyOff = KOFF;
@@ -414,7 +412,7 @@ namespace PSXSharp {
             int reverbLeft_Input = 0;
             int reverbRight_Input = 0;
             bool voiceHitAddress = false;
-            
+
             for (int i = 0; i < voices.Length; i++) {
 
                 if ((edgeKeyOn & (1 << i)) != 0) {
@@ -444,8 +442,7 @@ namespace PSXSharp {
                     sample = voices[i].interpolate();
                     modulatePitch(i);
                     voices[i].checkSamplesIndex();
-                }
-                else {
+                } else {
                     Console.WriteLine("[SPU] Noise generator !"); //Haven't seen something use it yet
                     voices[i].adsr.adsrVolume = 0;
                     voices[i].lastSample = 0;
@@ -454,15 +451,15 @@ namespace PSXSharp {
                 sample = (short)((sample * voices[i].adsr.adsrVolume) >> 15);
                 voices[i].adsr.ADSREnvelope();
                 voices[i].lastSample = sample;
-               
+
                 sumLeft += (sample * voices[i].getVolumeLeft()) >> 15;
                 sumRight += (sample * voices[i].getVolumeRight()) >> 15;
 
-                 if (((EON >> i) & 1) == 1) {   //Adding samples from any channel with active reverb
-                    reverbLeft_Input += (sample * voices[i].getVolumeLeft()) >> 15;    
+                if (((EON >> i) & 1) == 1) {   //Adding samples from any channel with active reverb
+                    reverbLeft_Input += (sample * voices[i].getVolumeLeft()) >> 15;
                     reverbRight_Input += (sample * voices[i].getVolumeRight()) >> 15;
-                 }
-               
+                }
+
             }
 
             //Merge in CD-Audio (CD-DA and uncompressed XA-ADPCM), read one L/R sample each tick (tick rate is 44.1khz so it should match the sample rate)
@@ -472,7 +469,7 @@ namespace PSXSharp {
             short CDAudioRight = 0;
             short CDAudioLeft_BeforeVol = 0;
             short CDAudioRight_BeforeVol = 0;
-            if (cdSamples > 0) {              
+            if (cdSamples > 0) {
                 short CDLeftVolume = (short)CDInputVolume;
                 short CDRightVolume = (short)(CDInputVolume >> 16);
                 CDAudioLeft_BeforeVol = CDDataControl.CDAudioSamples.Dequeue();
@@ -500,7 +497,7 @@ namespace PSXSharp {
 
             sumLeft += reverbLeft;
             sumRight += reverbRight;
-            
+
             sumLeft = (Math.Clamp(sumLeft, -0x8000, 0x7FFE) * mainVolumeLeft) >> 15;
             sumRight = (Math.Clamp(sumRight, -0x8000, 0x7FFE) * mainVolumeRight) >> 15;
 
@@ -517,9 +514,13 @@ namespace PSXSharp {
                 playAudio(outputBuffer);
                 outputBufferPtr -= 2048;
             }
+
             if (voiceHitAddress) {
                 SPU_IRQ();
             }
+
+            //Schedule Next Event
+            Scheduler.ScheduleEvent(0x300, SPUCallback, Event.SPU);
         }
 
         private void captureBuffers(uint address, short value) { //Experimental 
@@ -529,6 +530,7 @@ namespace PSXSharp {
                 SPU_IRQ();
             }
         }
+
         private (int, int) processReverb(int leftInput, int rightInput) {
 
             //Apply reverb formula
@@ -628,8 +630,8 @@ namespace PSXSharp {
             // Wait one 22050Hz cycle, then repeat the above stuff
 
             return (leftOutput , rightOutput);
-
         }
+
         public void SPU_IRQ() {
             if (IRQ9Enable) {
                 IRQ_Flag = 1;
@@ -647,8 +649,8 @@ namespace PSXSharp {
             if ((final == SPU_IRQ_Address) || ((final + 1) == SPU_IRQ_Address)) { SPU_IRQ(); }
             RAM[final] = (byte)value;
             RAM[final + 1] = (byte)(value >> 8);
-
         }
+
         private short reverbMemoryRead(uint address) {
             address += reverbCurrentAddress;
             uint start = (uint)mBASE << 3;
@@ -656,7 +658,6 @@ namespace PSXSharp {
             uint final = (start + ((address - start) % (end - start))) & 0x7FFFE; //Aliengment for even addresses only
             if((final == SPU_IRQ_Address) || ((final + 1) == SPU_IRQ_Address)) { SPU_IRQ(); }
             return (short)(((uint)RAM[final + 1] << 8) | RAM[final]);
-
         }
 
         private void modulatePitch(int i) {
@@ -691,6 +692,7 @@ namespace PSXSharp {
             RAM[currentAddress++] = (byte)((data >> 16) & 0xFF);
             RAM[currentAddress++] = (byte)((data >> 24) & 0xFF);
         }
+
         internal uint SPUtoDMA() {
             if ((transfer_Control >> 1 & 7) != 2) { throw new Exception(); }
             currentAddress &= 0x7FFFF;
@@ -703,6 +705,5 @@ namespace PSXSharp {
        
             return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
         }
-
     }
 }

@@ -1,4 +1,5 @@
-﻿using PSXSharp.Core.x64_Recompiler;
+﻿using ABI.Windows.Devices.PointOfService;
+using PSXSharp.Core;
 using PSXSharp.Peripherals.IO;
 using PSXSharp.Peripherals.MDEC;
 using PSXSharp.Peripherals.Timers;
@@ -41,6 +42,7 @@ namespace PSXSharp {
         public bool debug = false;
 
         public uint BUS_Cycles = 0;
+        Action Callback;
 
         public BUS(
             BIOS BIOS, RAM RAM, Scratchpad Scratchpad,
@@ -65,11 +67,13 @@ namespace PSXSharp {
             this.Timer2 = Timer2;
             this.MDEC = MDEC;
             this.GPU = GPU;
+            Callback = DMAIRQ;
         }
 
         public uint LoadWord(uint address) {           
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("read32: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadWord(physicalAddress);
@@ -99,6 +103,7 @@ namespace PSXSharp {
         public void StoreWord(uint address,uint value) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("write32: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): RAM.StoreWord(physicalAddress, value); break;
@@ -135,6 +140,7 @@ namespace PSXSharp {
         public ushort LoadHalf(uint address) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if(debug) Console.WriteLine("read16: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): return RAM.LoadHalf(physicalAddress);
@@ -162,6 +168,7 @@ namespace PSXSharp {
         public void StoreHalf(uint address, ushort value) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("write16: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): RAM.StoreHalf(physicalAddress, value); break;
@@ -194,6 +201,7 @@ namespace PSXSharp {
         public byte LoadByte(uint address) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("read8: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadByte(physicalAddress);
@@ -219,6 +227,7 @@ namespace PSXSharp {
         public void StoreByte(uint address, byte value) {
             uint physicalAddress = Mask(address);
             BUS_Cycles++;
+            if (debug) Console.WriteLine("write8: " + address.ToString("X"));
 
             switch (physicalAddress) {
                 case uint when RAM.Range.Contains(physicalAddress): RAM.StoreByte(physicalAddress, value); break;
@@ -263,6 +272,7 @@ namespace PSXSharp {
 
             uint address = ch.read_base_addr() & 0x1ffffc;
             int LinkedListMax = 0xFFFF;     //A hacky way to get out of infinite list transfares
+
             while (LinkedListMax-- > 0) {
                 uint header = RAM.LoadWord(address);
                 uint num_of_words = header >> 24;
@@ -281,12 +291,16 @@ namespace PSXSharp {
                 address = header & 0x1ffffc;
             }
             ch.done();
-            if (((DMA.ch_irq_en >> 2) & 1) == 1) {
-                DMA.ch_irq_flags |= (byte)(1 << 2);
+
+            if (((DMA.ch_irq_en >> (int)ch.get_portnum()) & 1) == 1) {
+                DMA.ch_irq_flags |= (byte)(1 << (int)ch.get_portnum());
             }
+
             if (DMA.IRQRequest() == 1) {
-                IRQ_CONTROL.IRQsignal(3);
-            };
+                //IRQ_CONTROL.IRQsignal(3);   //Instant IRQ may cause problems
+                Scheduler.ScheduleEvent(0, Callback, Event.DMA);
+            }
+            
         }
 
         private void HandleDMA(ref DMAChannel activeCH) {
@@ -370,25 +384,18 @@ namespace PSXSharp {
             }
 
             if (DMA.IRQRequest() == 1) {
-                IRQ_CONTROL.IRQsignal(3);   //Instant IRQ may cause problems
+                //IRQ_CONTROL.IRQsignal(3);   //Instant IRQ may cause problems
+                Scheduler.ScheduleEvent(0, Callback, Event.DMA);
             };
         }
 
-        public void Tick(int cycles) {
-            Timer0.SystemClockTick(cycles);
-            Timer1.SystemClockTick(cycles);
-            Timer2.SystemClockTick(cycles);
-            SPU.SPU_Tick(cycles);
-            GPU.Tick(cycles * GPU_FACTOR);
-            CDROM.tick(cycles);
-            JOY_IO.Tick(cycles);
+        public void DMAIRQ() {
+            IRQ_CONTROL.IRQsignal(3);
         }
 
-        public class DMAIRQ {
-            public int WaitCycles;
-            public uint Channel;
-        }
+        public void Tick(int c) {
 
+        }
     }
 }
 

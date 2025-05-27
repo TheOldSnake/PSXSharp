@@ -4,8 +4,8 @@ namespace PSXSharp {
     internal class IRQ_CONTROL {
         public static Range range = new Range(0x1f801070, 8);
 
-         static UInt32 I_STAT = 0;  //IRQ Status 
-         static UInt32 I_MASK = 0;  //IRQ Mask 
+        public static UInt32 I_STAT = 0;  //IRQ Status 
+        public static UInt32 I_MASK = 0;  //IRQ Mask 
 
         public static uint Read(uint address) {
             uint offset = address - range.start;
