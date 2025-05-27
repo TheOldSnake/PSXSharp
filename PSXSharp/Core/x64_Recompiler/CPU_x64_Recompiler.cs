@@ -46,7 +46,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static CPU_x64_Recompiler Instance;
 
         public static delegate* unmanaged[Stdcall]<void> StubBlockPointer;  //Stub block to call recompiler
-        private const int MAX_INSTRUCTIONS_PER_BLOCK = 30;
+        private const int MAX_INSTRUCTIONS_PER_BLOCK = 50;
 
         bool IsLoadingEXE;
         string? EXEPath;
@@ -212,8 +212,6 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             CurrentBlock = currentCache[block];
             CurrentBlock.Address = pc;
-            CurrentBlock.TotalMIPS_Instructions = 0;
-            CurrentBlock.MIPS_Checksum = 0;
 
             int instructionIndex = 0;
 
@@ -232,9 +230,8 @@ namespace PSXSharp.Core.x64_Recompiler {
                 //We end the block if any of these conditions is true
                 //Note that syscall and break are immediate exceptions and they don't have delay slot
 
-                if (end || CurrentBlock.TotalMIPS_Instructions > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {
-                    CurrentBlock.TotalMIPS_Instructions = (uint)instructionIndex;
-                    CurrentBlock.TotalCycles = CurrentBlock.TotalMIPS_Instructions * cyclesPerInstruction;                  
+                if (end || instructionIndex > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {                    
+                    CurrentBlock.TotalCycles = (uint)(instructionIndex * cyclesPerInstruction);                  
                     x64_JIT.TerminateBlock(emitter, ref endOfBlock);
                     AssembleAndLinkPointer(emitter, ref endOfBlock, ref CurrentBlock);
                     currentCache[block] = CurrentBlock;
@@ -277,7 +274,6 @@ namespace PSXSharp.Core.x64_Recompiler {
             NativeMemoryManager manager = NativeMemoryManager.GetMemoryManager();           //Get the instance, or make the instance static
             block.FunctionPointer = manager.WriteExecutableBlock(ref emittedCode);
             block.SizeOfAllocatedBytes = emittedCode.Length;      //Update the size to the new one
-            block.IsCompiled = true;
         }
       
         private static uint GetBlockAddress(uint address, bool biosBlock) {
@@ -288,21 +284,6 @@ namespace PSXSharp.Core.x64_Recompiler {
                 address &= ((1 << 21) - 1); // % 2MB 
             }
             return address >> 2;
-        }
-
-        private bool IsValidRAMBlock(uint block) {  //For RAM Blocks only
-            uint address = BUS.Mask(RAM_CacheBlocks[block].Address);
-            uint numberOfInstructions = RAM_CacheBlocks[block].TotalMIPS_Instructions;
-            ReadOnlySpan<byte> rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice((int)address, (int)(numberOfInstructions * 4));
-            ReadOnlySpan<uint> instructionsSpan = MemoryMarshal.Cast<byte, uint> (rawMemory);
-
-            uint memoryChecksum = 0;
-
-            for (int i = 0; i < instructionsSpan.Length; i++) {
-                memoryChecksum += instructionsSpan[i];
-            }
-
-            return RAM_CacheBlocks[block].MIPS_Checksum == memoryChecksum;
         }
 
         private static bool IsJumpOrBranch(Instruction instruction) {

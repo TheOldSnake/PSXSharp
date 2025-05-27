@@ -1174,10 +1174,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
     public unsafe class x64CacheBlock {     
         public uint Address;
-        public bool IsCompiled;                 //unused
-        public uint TotalMIPS_Instructions;     //unused, hopefully
         public uint TotalCycles;
-        public uint MIPS_Checksum;              //unused, hopefully
         public int SizeOfAllocatedBytes;
         public delegate* unmanaged[Stdcall]<void> FunctionPointer;
     }
