@@ -52,15 +52,15 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         private static readonly bool ForceLoadDelaySlotEmulation = false;
 
-        bool IsLoadingEXE;
-        string? EXEPath;
+        static bool IsLoadingEXE;
+        static string? EXEPath;
 
-        private CPU_x64_Recompiler(bool isEXE, string? EXEPath, BUS bus) {
+        private CPU_x64_Recompiler(bool isEXE, string? executablePath, BUS bus) {
             BUS = bus;
             GTE = new GTE();
             MemoryManager = NativeMemoryManager.GetMemoryManager();
             IsLoadingEXE = isEXE;
-            this.EXEPath = EXEPath;
+            EXEPath = executablePath;
             Reset();
         }
 
@@ -151,6 +151,15 @@ namespace PSXSharp.Core.x64_Recompiler {
         public static ulong StubBlockHandler() {
             //Code to be called in all non compiled blocks
 
+            //If we need to load an EXE, this should happen here because 
+            //the LoadTestRom will change the PC 
+            if (CPU_Struct_Ptr->PC == 0x80030000) {
+                if (IsLoadingEXE) {
+                    IsLoadingEXE = false;
+                    LoadTestRom(EXEPath);
+                }
+            }
+
             bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, isBios);
             int maskedAddress = (int)(CPU_Struct_Ptr->PC & 0x1FFFFFFF);
@@ -217,6 +226,11 @@ namespace PSXSharp.Core.x64_Recompiler {
             x64_JIT.IsFirstInstruction = true;
 
             x64_JIT.EmitBlockEntry(emitter);
+
+            //Emit TTY Handlers on these addresses
+            if (cacheBlock.Address == 0xA0 || cacheBlock.Address == 0xB0) {
+                x64_JIT.EmitTTY(emitter, cacheBlock.Address);
+            }
 
             for (;;) {
                 instruction.FullValue = instructionsSpan[instructionIndex++];
@@ -441,7 +455,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             return ref BUS;
         }
 
-        private void loadTestRom(string? path) {
+        private static void LoadTestRom(string? path) {
             byte[] EXE = File.ReadAllBytes(path);
 
             //Copy the EXE data to memory
@@ -521,6 +535,54 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         private static bool InstructionIsGTE(CPU_x64_Recompiler cpu) {
             return false; //Does not work with current JIT
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+        public static void TTYA0Handler() {
+            char character;
+            switch (CPU_Struct_Ptr->GPR[9]) {
+                case 0x3C:                       //putchar function (Prints the char in $a0)
+                    character = (char)CPU_Struct_Ptr->GPR[4];
+                    Console.Write(character);
+                    break;
+
+                case 0x3E:                        //puts function, similar to printf but differ in dealing with 0 character
+                    uint address = CPU_Struct_Ptr->GPR[4];       //address of the string is in $a0
+                    if (address == 0) {
+                        Console.Write("\\<NULL>");
+                    } else {
+                        while (BUS.LoadByte(address) != 0) {
+                            character = (char)BUS.LoadByte(address);
+                            Console.Write(character);
+                            address++;
+                        }
+                    }
+                    break;
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+        public static void TTYB0Handler() {
+            char character;
+            switch (CPU_Struct_Ptr->GPR[9]) {
+                case 0x3D:                       //putchar function (Prints the char in $a0)
+                    character = (char)CPU_Struct_Ptr->GPR[4];
+                    Console.Write(character);
+                    break;
+
+                case 0x3F:                        //puts function, similar to printf but differ in dealing with 0 character
+                    uint address = CPU_Struct_Ptr->GPR[4];       //address of the string is in $a0
+                    if (address == 0) {
+                        Console.Write("\\<NULL>");
+                    } else {
+                        while (BUS.LoadByte(address) != 0) {
+                            character = (char)BUS.LoadByte(address);
+                            Console.Write(character);
+                            address++;
+                        }
+                    }
+                    break;
+            }
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]

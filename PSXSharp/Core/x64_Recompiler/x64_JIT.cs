@@ -1186,6 +1186,17 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
         }
 
+        public static void EmitTTY(Assembler asm, uint address) {
+            if (address == 0xA0) {
+                asm.mov(r15, GetTTYA0Handler());
+
+            } else if(address == 0xB0){
+                asm.mov(r15, GetTTYB0Handler());
+            }
+
+            asm.call(r15);
+        }
+
         public static void EmitSaveNonVolatileRegisters(Assembler asm) {
             asm.push(rbx);
             asm.push(rdi);

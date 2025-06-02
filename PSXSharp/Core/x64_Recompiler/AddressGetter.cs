@@ -128,6 +128,16 @@
             return (ulong)ptr;
         }
 
+        public static ulong GetTTYA0Handler() {
+            delegate* unmanaged[Stdcall]<void> ptr = &TTYA0Handler;
+            return (ulong)ptr;
+        }
+
+        public static ulong GetTTYB0Handler() {
+            delegate* unmanaged[Stdcall]<void> ptr = &TTYB0Handler;
+            return (ulong)ptr;
+        }
+
         public static ulong GetPrintAddress() {
             delegate* unmanaged[Stdcall]<uint, void> ptr = &Print;
             return (ulong)ptr;
