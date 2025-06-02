@@ -1,4 +1,5 @@
 ﻿using Iced.Intel;
+using PSXSharp.Core.MSIL_Recompiler;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -9,7 +10,7 @@ using Label = Iced.Intel.Label;
 
 namespace PSXSharp.Core.x64_Recompiler {
     public unsafe partial class CPU_x64_Recompiler : CPU, IDisposable {
-      
+
         [DllImport("kernel32.dll")]
         private static extern bool FlushInstructionCache(IntPtr hProcess, IntPtr lpBaseAddress, UIntPtr dwSize);
 
@@ -25,7 +26,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         public const uint BIOS_START = 0x1FC00000;          //Reset vector but masked
         public const uint BIOS_SIZE = 512 * 1024;           //512 KB
         public const uint RAM_SIZE = 2 * 1024 * 1024;       //2 MB
-        public const uint RAM_SIZE_8MB = RAM_SIZE * 4;    
+        public const uint RAM_SIZE_8MB = RAM_SIZE * 4;
 
         const uint CYCLES_PER_SECOND = 33868800;
         const uint CYCLES_PER_FRAME = CYCLES_PER_SECOND / 60;
@@ -46,12 +47,13 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static CPU_x64_Recompiler Instance;
 
         public static delegate* unmanaged[Stdcall]<void> StubBlockPointer;  //Stub block to call recompiler
-        private const int MAX_INSTRUCTIONS_PER_BLOCK = 50;
+        private const int MAX_INSTRUCTIONS_PER_BLOCK = 127;
+        private static readonly bool ForceLoadDelaySlotEmulation = false;
 
         bool IsLoadingEXE;
         string? EXEPath;
 
-        private CPU_x64_Recompiler(bool isEXE, string? EXEPath, BUS bus) {           
+        private CPU_x64_Recompiler(bool isEXE, string? EXEPath, BUS bus) {
             BUS = bus;
             GTE = new GTE();
             MemoryManager = NativeMemoryManager.GetMemoryManager();
@@ -82,7 +84,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             BIOS_CacheBlocks = new x64CacheBlock[BIOS_SIZE >> 2];
             for (int i = 0; i < BIOS_CacheBlocks.Length; i++) {
                 BIOS_CacheBlocks[i] = new x64CacheBlock();
-                BIOS_CacheBlocks[i].FunctionPointer = StubBlockPointer;        
+                BIOS_CacheBlocks[i].FunctionPointer = StubBlockPointer;
             }
 
             //Initialize JIT cache for RAM region
@@ -112,17 +114,18 @@ namespace PSXSharp.Core.x64_Recompiler {
 
                 //Run the CPU until the event
                 while (CPU_Struct_Ptr->CurrentCycle < nextEvent.EndTime) {
-                    Run();                    
+                    Run();
                 }
 
                 //Handle the ready event and check for interrupts
+                //TODO: Handle GTE IRQ behaviour
                 nextEvent.Callback();
-                IRQCheck();
+                IRQCheck();  
 
                 //Update current time
                 currentTime = CPU_Struct_Ptr->CurrentCycle;
             }
-            
+
             CyclesDone += CYCLES_PER_FRAME;
         }
 
@@ -136,7 +139,9 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             TTY(CPU_Struct_Ptr->PC);*/
 
+            //Console.WriteLine("Running " + CPU_Struct_Ptr->PC.ToString("x"));
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, IsBIOSBlock);
+            x64CacheBlock cache = CurrentCache[block];
             CurrentCache[block].FunctionPointer();
         }
 
@@ -170,8 +175,10 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //After compilation we need to clear our actual CPU cache for that address
             FlushInstructionCache(ProcessHandle, (nint)currentBlock.FunctionPointer, (nuint)currentBlock.SizeOfAllocatedBytes);
+
+            //Console.WriteLine("Running after compilation " + CPU_Struct_Ptr->PC.ToString("x"));
             //Return the address to be called in asm
-            return (ulong)currentBlock.FunctionPointer;  
+            return (ulong)currentBlock.FunctionPointer;
         }
 
         public void SetInvalidAllRAMBlocks() {
@@ -202,8 +209,10 @@ namespace PSXSharp.Core.x64_Recompiler {
             Instruction instruction = new Instruction();
             Assembler emitter = new Assembler(64);
             Label endOfBlock = emitter.CreateLabel();
-            bool end = false;
+            bool shouldEnd = false;
             int instructionIndex = 0;
+            int loadDelayCounter = 0;
+            x64_JIT.IsFirstInstruction = true;
 
             x64_JIT.EmitBlockEntry(emitter);
 
@@ -211,29 +220,36 @@ namespace PSXSharp.Core.x64_Recompiler {
                 instruction.FullValue = instructionsSpan[instructionIndex++];
                 bool syscallOrBreak = IsSyscallOrBreak(instruction);
 
+                if (loadDelayCounter <= 0) {
+                    //Experimental -- There might be edge cases that are not covered
+                    loadDelayCounter = NeedsDelaySlot(instruction, instructionsSpan, instructionIndex, shouldEnd);
+                }
+
                 if (syscallOrBreak) {
                     x64_JIT.EmitSavePC(emitter);  //Needed for the exception procedure
                 }
 
-                EmitInstruction(instruction, emitter, cyclesPerInstruction);
+                EmitInstruction(instruction, emitter, cyclesPerInstruction, loadDelayCounter--);
 
                 //We end the block if any of these conditions is true
                 //Note that syscall and break are immediate exceptions and they don't have delay slot
 
-                if (end || instructionIndex > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {
-                    cacheBlock.TotalCycles = (uint)(instructionIndex * cyclesPerInstruction);                  
+                if (shouldEnd || instructionIndex > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {
+                    cacheBlock.TotalCycles = (uint)(instructionIndex * cyclesPerInstruction);
                     x64_JIT.TerminateBlock(emitter, ref endOfBlock);
                     AssembleAndLinkPointer(emitter, ref endOfBlock, ref cacheBlock);
-                    //Console.WriteLine("Compiled: " + pc.ToString("x") + " - " + CurrentBlock.TotalMIPS_Instructions + " Instructions");
+                    //Console.WriteLine("Compiled: " + CPU_Struct_Ptr->PC.ToString("x"));
                     return;
                 }
 
                 //For jumps and branches, we set the flag such that the delay slot is also included
-                end = IsJumpOrBranch(instruction);
+                shouldEnd = IsJumpOrBranch(instruction);
             }
-        }        
+        }
 
-        public static void EmitInstruction(Instruction instruction, Assembler emitter, uint cyclesPerInstruction) {
+        public static void EmitInstruction(Instruction instruction, Assembler emitter, uint cyclesPerInstruction, int loadDelayCounter) {
+            x64_JIT.EnableLoadDelaySlot = (loadDelayCounter > 0) || ForceLoadDelaySlotEmulation;
+
             //Emit branch delay to keep PC registers up to date
             x64_JIT.EmitBranchDelayHandler(emitter);
 
@@ -242,8 +258,17 @@ namespace PSXSharp.Core.x64_Recompiler {
                 x64_LUT.MainLookUpTable[instruction.GetOpcode()](instruction, emitter);
             }
 
-            //Emit the load delay handling
-            x64_JIT.EmitRegisterTransfare(emitter);
+            if (x64_JIT.EnableLoadDelaySlot) {
+                //Emit the load delay handling
+                x64_JIT.EmitRegisterTransfare(emitter);
+            } else {
+                if (x64_JIT.IsFirstInstruction) {
+                    //Handle possible delayed load from previous block
+                    Span<uint> regs = Register_LUT.MainLookUpTable[instruction.GetOpcode()](instruction);
+                    x64_JIT.MaybeCancelLoadDelay(emitter, (int)regs[0]);
+                    x64_JIT.IsFirstInstruction = false;
+                }
+            }
 
             //Update the current cycle 
             x64_JIT.EmitUpdateCurrentCycle(emitter, (int)cyclesPerInstruction);
@@ -264,7 +289,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             block.FunctionPointer = manager.WriteExecutableBlock(ref emittedCode);
             block.SizeOfAllocatedBytes = emittedCode.Length;      //Update the size to the new one
         }
-      
+
         private static uint GetBlockAddress(uint address, bool biosBlock) {
             address &= 0x1FFFFFFF;
             if (biosBlock) {
@@ -294,8 +319,75 @@ namespace PSXSharp.Core.x64_Recompiler {
             return false;
         }
 
+        private static bool IsAnyLoad(Instruction instruction) {
+            return (instruction.GetOpcode() >= 0x20 && instruction.GetOpcode() <= 0x26) || IsCOPLoad(instruction);
+        }
+    
+        private static bool IsCOPLoad(Instruction instruction) {
+            return (instruction.GetOpcode() == 0x10 && (instruction.Get_rs() == 0)) ||                              //MFC0
+                (instruction.GetOpcode() == 0x12 && (instruction.Get_rs() == 0 || instruction.Get_rs() == 2));      //MFC2/CFC2
+        }
+
+        private static bool HasReadDependancy(Span<uint> loadInstructionRegs, Span<uint> nextInstructionRegs) {
+            for (int i = 1; i < nextInstructionRegs.Length; i++) {
+                if (nextInstructionRegs[i] == loadInstructionRegs[0]) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static int NeedsDelaySlot(Instruction instruction, ReadOnlySpan<uint> instructions, int index, bool end) {         
+            //If the instruction is not any form of load
+            if (!IsAnyLoad(instruction)) {
+                return 0;
+            }
+
+            //Always delay the load if it's in the branch delay slot
+            //The MaybeCancelLoadDelay function should figure out what to do
+            if (end) {
+                return 1; 
+            }
+
+            Instruction nextInstruction = new Instruction {
+                FullValue = instructions[index]
+            };
+
+            Instruction nextNextInstruction = new Instruction {
+                FullValue = instructions[index + 1]
+            };
+
+            Span<uint> regsOfCurrentInstruction = Register_LUT.MainLookUpTable[instruction.GetOpcode()](instruction);
+            Span<uint> regsOfNextInstruction = Register_LUT.MainLookUpTable[nextInstruction.GetOpcode()](nextInstruction);
+            Span<uint> regsOfNextNextInstruction = Register_LUT.MainLookUpTable[nextNextInstruction.GetOpcode()](nextNextInstruction);
+
+            if (regsOfCurrentInstruction[0] == 0) {
+                return 0;
+            }
+
+            //Special Cases:
+            //LW then LW then Read
+            //LWL/R then LWL/R then Read
+            //Basically any consecutive loads followed by a read directly
+            if ((IsAnyLoad(nextInstruction) && regsOfNextInstruction[0] == regsOfCurrentInstruction[0])) {
+                //Check the if 3rd instruction reads from the load target
+                if (HasReadDependancy(regsOfCurrentInstruction, regsOfNextNextInstruction)) {
+                    return 3;
+                }
+                return 0;
+            }
+
+            //Normal Case where a load followed by a normal instruction
+            //Check if that instruction reads from the load target
+            if (HasReadDependancy(regsOfCurrentInstruction, regsOfNextInstruction)) {
+                return 2;
+            }
+
+            return 0;
+        }
+
         private static void IRQCheck() {
-            if (IRQ_CONTROL.isRequestingIRQ()) {  //Interrupt check 
+            if (IRQ_CONTROL.isRequestingIRQ()) {  //Interrupt check    
                 CPU_Struct_Ptr->COP0_Cause |= (1 << 10);
                 uint sr = CPU_Struct_Ptr->COP0_SR;
 
@@ -327,8 +419,9 @@ namespace PSXSharp.Core.x64_Recompiler {
             //to the previous instruction which is the delay slot instruction
             //Note: when we leave JIT we are (almost always) in a delay slot
             if (exceptionCause == (int)CPU.Exceptions.IRQ) {
-                cpuStruct->COP0_EPC = cpuStruct->PC;           //Save the PC in register EPC
+                cpuStruct->COP0_EPC = cpuStruct->PC;           //Save the PC in register EPC (we might fall into a GTE instruction here!)
                 cpuStruct->DelaySlot = cpuStruct->Branch;
+                cpuStruct->Branch = 0;
             } else {
                 cpuStruct->COP0_EPC = cpuStruct->Current_PC;   //Save the current PC in register EPC
             }
@@ -362,7 +455,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             if (baseStackAndFrameAddress != 0) {
                 uint stackAndFrameOffset = (uint)(EXE[0x34] | (EXE[0x34 + 1] << 8) | (EXE[0x34 + 2] << 16) | (EXE[0x34 + 3] << 24));
-              CPU_Struct_Ptr->GPR[(int)CPU.Register.sp] = CPU_Struct_Ptr->GPR[(int)CPU.Register.fp] = baseStackAndFrameAddress + stackAndFrameOffset;
+                CPU_Struct_Ptr->GPR[(int)CPU.Register.sp] = CPU_Struct_Ptr->GPR[(int)CPU.Register.fp] = baseStackAndFrameAddress + stackAndFrameOffset;
             }
 
             CPU_Struct_Ptr->GPR[(int)CPU.Register.gp] = (uint)(EXE[0x14] | (EXE[0x14 + 1] << 8) | (EXE[0x14 + 2] << 16) | (EXE[0x14 + 3] << 24));
@@ -371,7 +464,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             CPU_Struct_Ptr->Current_PC = CPU_Struct_Ptr->PC = (uint)(EXE[0x10] | (EXE[0x10 + 1] << 8) | (EXE[0x10 + 2] << 16) | (EXE[0x10 + 3] << 24));
             CPU_Struct_Ptr->Next_PC = CPU_Struct_Ptr->PC + 4;
         }
-      
+
         private void TTY(uint pc) {
 
             switch (pc) {
@@ -403,8 +496,8 @@ namespace PSXSharp.Core.x64_Recompiler {
                 case 0xB0:
                     switch (CPU_Struct_Ptr->GPR[9]) {
                         case 0x3D:                       //putchar function (Prints the char in $a0)
-                            character = (char)CPU_Struct_Ptr->GPR[4];            
-                            Console.Write(character);                            
+                            character = (char)CPU_Struct_Ptr->GPR[4];
+                            Console.Write(character);
                             break;
 
                         case 0x3F:                                       //puts function, similar to printf but differ in dealing with 0 character
@@ -481,7 +574,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static void Print(uint val) {
             Console.WriteLine("[X64 Debug] " + val.ToString("x"));
-        }        
+        }
 
         public void Dispose() {
             Dispose(true);

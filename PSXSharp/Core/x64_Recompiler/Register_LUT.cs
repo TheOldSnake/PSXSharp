@@ -1,11 +1,13 @@
-﻿using Iced.Intel;
-using PSXSharp.Core.Common;
-using PSXSharp.Core.x64_Recompiler;
-using System;
+﻿using System;
+using System.Diagnostics;
 using Instruction = PSXSharp.Core.Common.Instruction;
 
 namespace PSXSharp.Core.MSIL_Recompiler {
     public static unsafe class Register_LUT {
+
+        //Returns the registers used by instructions, with the write target being always at index 0
+        //If there is no write (or it is not to a GPR) then index 0 contains 0
+        //Read registers are at index 1 and above
 
         public static readonly delegate*<Instruction, uint[]>[] MainLookUpTable = [
                 &special,   &bxx,       &jump,      &jal,       &beq,        &bne,       &blez,      &bgtz,
@@ -30,7 +32,10 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         ];
 
         private static uint[] illegal(Instruction instruction) {
-            throw new Exception("Illegal instruction!");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[Register LUT] Illegal instruction");
+            Console.ForegroundColor = ConsoleColor.Green;
+            throw new UnreachableException();
         }
 
         private static uint[] special(Instruction instruction) {
@@ -39,37 +44,38 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         private static uint[] bxx(Instruction instruction) {
             uint rs = instruction.Get_rs();
-            return [rs];
+            bool link = ((instruction.FullValue >> 17) & 0xF) == 0x8;
+            return [(uint)(link? 31:0), rs];
         }
 
         private static uint[] jump(Instruction instruction) {
-            return null;
+            return [0];
         }
 
         private static uint[] jal(Instruction instruction) {
-            return null;
+            return [31];
         }
 
         private static uint[] beq(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] bne(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] blez(Instruction instruction) {
             uint rs = instruction.Get_rs();
-            return [rs];
+            return [0, rs];
         }
 
         private static uint[] bgtz(Instruction instruction) {
             uint rs = instruction.Get_rs();
-            return [rs];
+            return [0, rs];
         }
 
         private static uint[] addi(Instruction instruction) {
@@ -124,12 +130,18 @@ namespace PSXSharp.Core.MSIL_Recompiler {
             uint rd = instruction.Get_rd();
             uint rs = instruction.Get_rs();
 
+            //Ensure that the first index is the GPR write target
+            //If the read/write target is in COP0 we replace it with 0
+
             switch (rs) {
                 case 0b00100:  // MTC0
+                    return [0, rt];        
+
                 case 0b00000:  // MFC0
-                    return [rd, rt];
+                    return [rt];     
+
                 case 0b10000:   // RFE
-                    return null;
+                    return [0];
                 default:
                     throw new Exception("Unhandled cop0 instruction: " + instruction.FullValue.ToString("X"));
             }
@@ -141,19 +153,24 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         private static uint[] cop2(Instruction instruction) {
             if ((instruction.FullValue >> 25) == 0b0100101) {
-                return null;
+                return [0];
             }
 
             uint rt = instruction.Get_rt();
             uint rd = instruction.Get_rd();
             uint rs = instruction.Get_rs();
 
+            //Ensure that the first index is the GPR write target
+            //If the read/write target is in COP2 we replace it with 0
+
             switch (rs) {
-                case 0b00000:   // MFC
-                case 0b00010:   // CFC                 
-                case 0b00110:   // CTC                  
-                case 0b00100:   // MTC
-                    return [rd, rt];
+                case 0b00000:   // MFC2
+                case 0b00010:   // CFC2
+                    return [rt];
+
+                case 0b00110:   // CTC2                  
+                case 0b00100:   // MTC2
+                    return [0, rt];
                 default:
                     throw new Exception("Unhandled GTE opcode: " + instruction.Get_rs().ToString("X"));
             }
@@ -196,31 +213,31 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         private static uint[] sb(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] sh(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] sw(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] swl(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] swr(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] lwl(Instruction instruction) {
@@ -246,7 +263,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         private static uint[] lwc2(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rs];
         }
 
         private static uint[] lwc3(Instruction instruction) {
@@ -264,7 +281,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         private static uint[] swc2(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rs];
         }
 
         private static uint[] swc3(Instruction instruction) {
@@ -312,7 +329,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         private static uint[] jr(Instruction instruction) {
             uint rs = instruction.Get_rs();
-            return [rs];
+            return [0, rs];
         }
 
         private static uint[] jalr(Instruction instruction) {
@@ -322,11 +339,11 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         }
 
         private static uint[] syscall(Instruction instruction) {
-            return null;
+            return [0];
         }
 
         private static uint[] break_(Instruction instruction) {
-            return null;
+            return [0];
         }
 
         private static uint[] mfhi(Instruction instruction) {
@@ -336,7 +353,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         private static uint[] mthi(Instruction instruction) {
             uint rs = instruction.Get_rs();
-            return [rs];
+            return [0, rs];
         }
 
         private static uint[] mflo(Instruction instruction) {
@@ -346,31 +363,31 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         private static uint[] mtlo(Instruction instruction) {
             uint rs = instruction.Get_rs();
-            return [rs];
+            return [0, rs];
         }
 
         private static uint[] mult(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] multu(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] div(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] divu(Instruction instruction) {
             uint rs = instruction.Get_rs();
             uint rt = instruction.Get_rt();
-            return [rt, rs];
+            return [0, rt, rs];
         }
 
         private static uint[] add(Instruction instruction) {

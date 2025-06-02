@@ -29,6 +29,9 @@ namespace PSXSharp.Core.x64_Recompiler {
         ];
 
         private static void illegal(Instruction instruction, Assembler asm) {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("[x64 JIT] Illegal Instruction!");
+            Console.ForegroundColor = ConsoleColor.Green;
             throw new Exception("Illegal instruction!");
         }
 

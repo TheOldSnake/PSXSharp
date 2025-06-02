@@ -54,13 +54,16 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         //Prints a register value to the console
         //Destroys ecx!
-        private static void EmitPrintReg(Assembler asm, AssemblerRegister32 src) {      
+        private static void EmitPrintReg(Assembler asm, AssemblerRegister32 src) {
             asm.sub(rsp, 40);                       //Shadow space
             asm.mov(ecx, src);
             asm.mov(r15, GetPrintAddress());
             asm.call(r15);
             asm.add(rsp, 40);                       //Undo Shadow space 
         }
+
+        public static bool EnableLoadDelaySlot = false;
+        public static bool IsFirstInstruction = false;
 
         private static void EmitRegisterRead(Assembler asm, AssemblerRegister32 dst, int srcNumber) {
             //asm.mov(r15, GetGPRAddress(srcNumber));     //We use r15 ONLY for holding 64-bit addresses
@@ -71,17 +74,58 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static void EmitRegisterWrite(Assembler asm, int dstNumber, AssemblerRegister32 src, bool delayed) {
             int regNumber_Offset;
             int regValue_Offset;
+            if (EnableLoadDelaySlot) {
+                if (delayed) {
+                    regNumber_Offset = DelayedRegisterLoad_number;
+                    regValue_Offset = DelayedRegisterLoad_value;
+                } else {
+                    regNumber_Offset = DirectWrite_number;
+                    regValue_Offset = DirectWrite_value;
+                }
 
-            if (delayed) {
-                regNumber_Offset = DelayedRegisterLoad_number;
-                regValue_Offset = DelayedRegisterLoad_value;
+                asm.mov(__dword_ptr[rbx + regNumber_Offset], dstNumber);
+                asm.mov(__dword_ptr[rbx + regValue_Offset], src);
+
             } else {
-                regNumber_Offset = DirectWrite_number;
-                regValue_Offset = DirectWrite_value;
+                int destOffset = GPR_Offset + (dstNumber * 4);
+                if (destOffset != 0) {
+                    asm.mov(__dword_ptr[rbx + destOffset], src);
+                }            
+            }
+        }
+
+        public static void MaybeCancelLoadDelay(Assembler asm, int target) {
+            //This is a combination of runtime and compile time check after the first instruction
+            //that handles a possible delayed load from the last instruction in the previous block
+            Label skip = asm.CreateLabel();
+
+            //If there was a delayed load, the register number is now in ReadyRegisterLoad_number
+            asm.mov(eax, __dword_ptr[rbx + ReadyRegisterLoad_number]);  
+
+            //If it's zero, then there is no delayed load
+            asm.test(eax, eax);             
+            asm.jz(skip);
+
+            //If it equals to this block's first instruction (direct) write target, we cancel the load
+            if (target != 0) {
+                asm.cmp(eax, target);     
+                asm.je(skip);
             }
 
-            asm.mov(__dword_ptr[rbx + regNumber_Offset], dstNumber);
-            asm.mov(__dword_ptr[rbx + regValue_Offset], src);
+            //Otherwise do the load
+            asm.mov(ecx, __dword_ptr[rbx + ReadyRegisterLoad_value]);
+            asm.shl(eax, 2);
+
+            if (GPR_Offset > 0) {
+                asm.mov(__dword_ptr[rbx + rax + GPR_Offset], ecx);
+            } else {
+                asm.mov(__dword_ptr[rbx + rax], ecx);
+            }
+
+            asm.Label(ref skip);
+
+            //Write zero as the load has either been written or canceled
+            asm.mov(__qword_ptr[rbx + ReadyRegisterLoad_number], 0);
         }
 
         private static void EmitCheckCacheIsolation(Assembler asm) {
@@ -105,7 +149,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.call(r15);                          //Call Exception
         }
 
-        public static void EmitSlti(int rs, int rt, uint imm, bool signed, Assembler asm) {    
+        public static void EmitSlti(int rs, int rt, uint imm, bool signed, Assembler asm) {
             asm.mov(eax, 0);                                //Set result to 0 initially
             EmitRegisterRead(asm, ecx, rs);                 //Load GPR[rs]
             asm.mov(edx, imm);                              //Load imm
@@ -123,7 +167,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             EmitRegisterWrite(asm, rt, eax, false);
         }
 
-        public static void EmitSlt(int rs, int rt, int rd, bool signed, Assembler asm) {      
+        public static void EmitSlt(int rs, int rt, int rd, bool signed, Assembler asm) {
             asm.mov(eax, 0);                                //Set result to 0 initially
             EmitRegisterRead(asm, ecx, rs);                 //Load GPR[rs]
             EmitRegisterRead(asm, edx, rt);                 //Load GPR[rt]
@@ -157,7 +201,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             //The inverse means we don't branch
             switch (type) {
                 //0,1 are comparing with GPR[rt] 
-                case BranchIf.BEQ: asm.jne(skipBranch);  break;
+                case BranchIf.BEQ: asm.jne(skipBranch); break;
                 case BranchIf.BNE: asm.je(skipBranch); break;
 
                 //2,3 are comparing with constant 0 
@@ -194,14 +238,14 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
         }
 
-        public static void EmitJal(uint targetAddress, Assembler asm) {            
+        public static void EmitJal(uint targetAddress, Assembler asm) {
             //Link to reg 31
             asm.mov(ecx, __dword_ptr[rbx + NextPCOffset]);
             EmitRegisterWrite(asm, (int)CPU.Register.ra, ecx, false);
 
             //Jump to target
             asm.mov(__dword_ptr[rbx + NextPCOffset], targetAddress);
-            asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);      
+            asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
         }
 
         public static void EmitJump(uint targetAddress, Assembler asm) {
@@ -219,9 +263,9 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.cmp(ecx, edx);                                    //Compare
 
             //Test the inverse, if true then we don't branch
-            if (bgez) {                       
+            if (bgez) {
                 asm.jl(skipBranch);
-            } else {                      
+            } else {
                 asm.jge(skipBranch);
             }
 
@@ -278,7 +322,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             //Emit the required op
             switch (type) {
                 case LogicSignals.AND: asm.and(eax, imm); break;
-                case LogicSignals.OR: asm.or(eax, imm);   break;
+                case LogicSignals.OR: asm.or(eax, imm); break;
                 case LogicSignals.XOR: asm.xor(eax, imm); break;
                 //There is no NORI instruction
                 default: throw new Exception("JIT: Unknown Logic_i : " + type);
@@ -326,7 +370,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //register cl contains low byte of ecx
             switch (direction) {
-                case ShiftSignals.LEFT: asm.shl(eax, cl); break;            
+                case ShiftSignals.LEFT: asm.shl(eax, cl); break;
                 case ShiftSignals.RIGHT: asm.shr(eax, cl); break;
                 case ShiftSignals.RIGHT_ARITHMETIC: asm.sar(eax, cl); break;
                 default: throw new Exception("Unknown Shift direction");
@@ -402,7 +446,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
                 //Only one check, if denominator == 0
                 //Check the inverse
-                asm.mov(esi, 0); 
+                asm.mov(esi, 0);
                 asm.cmp(ecx, esi);
                 asm.jne(normalCase);
 
@@ -425,13 +469,13 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitMULT(int rs, int rt, bool signed, Assembler asm) {
-            EmitRegisterRead(asm, eax, rs);     
-            EmitRegisterRead(asm, ecx, rt);    
+            EmitRegisterRead(asm, eax, rs);
+            EmitRegisterRead(asm, ecx, rt);
 
             if (signed) {
                 asm.imul(ecx);   // edx:eax = signed eax * signed ecx
 
-            } else {            
+            } else {
                 asm.mul(ecx);   //edx:eax = eax * ecx
             }
 
@@ -440,8 +484,18 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitLUI(int rt, uint imm, Assembler asm) {
-            asm.mov(__dword_ptr[rbx + DirectWrite_number], rt);
-            asm.mov(__dword_ptr[rbx + DirectWrite_value], imm << 16);
+            if (EnableLoadDelaySlot) {
+                asm.mov(__dword_ptr[rbx + DirectWrite_number], rt);
+                asm.mov(__dword_ptr[rbx + DirectWrite_value], imm << 16);
+            } else {
+                int destOffset = GPR_Offset + (rt * 4);
+                if (rt != 0) {
+                    asm.mov(__dword_ptr[rbx + destOffset], imm << 16);
+                }
+            }
+
+            // asm.mov(__dword_ptr[rbx + DirectWrite_number], rt);
+            // asm.mov(__dword_ptr[rbx + DirectWrite_value], imm << 16);
         }
 
         public static void EmitMTC0(int rt, int rd, Assembler asm) {
@@ -460,7 +514,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 case 13: offset = COP0_Cause_Offset; break;
                 case 14: offset = COP0_EPC_Offset; break;
                 case 15: asm.mov(ecx, 0x00000002); break; //COP0 R15 (PRID)
-                default: rt = 0; Console.WriteLine("Unhandled cop0 Register Read: " + rd);  break;
+                default: rt = 0; Console.WriteLine("Unhandled cop0 Register Read: " + rd); break;
             }
 
             if (rd != 15) {
@@ -562,7 +616,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 case MemoryReadWriteSize.BYTE:
                     asm.mov(r15, GetBUSReadByteAddress());     //Load function pointer
                     asm.call(r15);                             //Result in eax
-                    if (signed) {                       
+                    if (signed) {
                         asm.movsx(eax, al);             //Sign-extend 8-bit al to 32-bit eax
                     }
                     break;
@@ -570,7 +624,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 case MemoryReadWriteSize.HALF:
                     asm.mov(r15, GetBUSReadHalfAddress());     //Load function pointer
                     asm.call(r15);                             //Result in eax
-                    if (signed) {                      
+                    if (signed) {
                         asm.movsx(eax, ax);             //Sign-extend 16-bit ax to 32-bit eax
                     }
                     break;
@@ -637,12 +691,14 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             EmitRegisterRead(asm, edx, rt);            //current_value -> edx
 
-            //Bypass load delay if rt == ReadyRegisterLoad.RegisterNumber
-            asm.mov(esi, rt);
-            asm.mov(edi, __dword_ptr[rbx + ReadyRegisterLoad_number]);
-            asm.cmp(esi, edi);
-            asm.jne(loadPos);                               //Skip if they are not equal
-            asm.mov(edx, __dword_ptr[rbx + ReadyRegisterLoad_value]);                 //Overwrite current_value (edx)
+            if (EnableLoadDelaySlot || IsFirstInstruction) {
+                //Bypass load delay if rt == ReadyRegisterLoad.RegisterNumber
+                asm.mov(esi, rt);
+                asm.mov(edi, __dword_ptr[rbx + ReadyRegisterLoad_number]);
+                asm.cmp(esi, edi);
+                asm.jne(loadPos);                               //Skip if they are not equal
+                asm.mov(edx, __dword_ptr[rbx + ReadyRegisterLoad_value]);                 //Overwrite current_value (edx)
+            }
 
 
             asm.Label(ref loadPos);
@@ -657,10 +713,10 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             asm.mov(edx, r13d);
             asm.mov(r8d, r14d);
-       
+
             asm.and(r8d, 3);                        //pos in r8d
 
-           
+
             //edx -> current_value
             //eax -> word
 
@@ -733,17 +789,19 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             EmitRegisterRead(asm, edx, rt);            //current_value -> edx
 
-            //Bypass load delay if rt == ReadyRegisterLoad.RegisterNumber
-            asm.mov(esi, rt);
-            asm.mov(edi, __dword_ptr[rbx + ReadyRegisterLoad_number]);
-            asm.cmp(esi, edi);
-            asm.jne(loadPos);                               //Skip if they are not equal
-            asm.mov(edx, __dword_ptr[rbx + ReadyRegisterLoad_value]);                 //Overwrite current_value (edx)
+            if (EnableLoadDelaySlot || IsFirstInstruction) {
+                //Bypass load delay if rt == ReadyRegisterLoad.RegisterNumber
+                asm.mov(esi, rt);
+                asm.mov(edi, __dword_ptr[rbx + ReadyRegisterLoad_number]);
+                asm.cmp(esi, edi);
+                asm.jne(loadPos);                               //Skip if they are not equal
+                asm.mov(edx, __dword_ptr[rbx + ReadyRegisterLoad_value]);                 //Overwrite current_value (edx)
+            }
 
 
             asm.Label(ref loadPos);
             asm.and(ecx, ~3);                       //ecx &= ~3
-            
+
             asm.mov(r13d, edx);
             asm.mov(r14d, r8d);
 
@@ -853,7 +911,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.and(eax, 0xffffff00);
             asm.shr(edx, 24);
             asm.or(edx, eax);
-            
+
             asm.jmp(finalStep);
 
             //case 1: finalValue = current_value & 0xffff0000 | value >> 16;
@@ -885,7 +943,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.shr(edx, 0);
             asm.or(edx, eax);
 
-            
+
             asm.Label(ref finalStep);
 
             //final_address & ~3 -> ecx, and final value is already in edx, shadow space is already added
@@ -991,7 +1049,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static void EmitCalculateAddress(Assembler asm, AssemblerRegister32 dst, int sourceReg, uint imm) {
             EmitRegisterRead(asm, dst, sourceReg);  //Read GPR
             asm.add(dst, imm);                      //Add to it imm
-        }       
+        }
 
         public static void EmitRegisterTransfare(Assembler asm) {
             /*
@@ -1000,7 +1058,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             }
             */
 
- 
+
             Label skip = asm.CreateLabel();
 
             asm.mov(ecx, __dword_ptr[rbx + ReadyRegisterLoad_number]);
@@ -1017,7 +1075,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 asm.mov(__dword_ptr[rbx + rcx + GPR_Offset], eax);
             } else {
                 asm.mov(__dword_ptr[rbx + rcx], eax);
-            }                
+            }
 
             asm.Label(ref skip);
 
@@ -1044,9 +1102,9 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //If offset is 0 we don't need to add anything, which it is currently
             if (GPR_Offset > 0) {
-                asm.mov(__dword_ptr[rbx + rcx + GPR_Offset], eax);                 
+                asm.mov(__dword_ptr[rbx + rcx + GPR_Offset], eax);
             } else {
-                asm.mov(__dword_ptr[rbx + rcx], eax);                  
+                asm.mov(__dword_ptr[rbx + rcx], eax);
             }
 
             /*
@@ -1064,7 +1122,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.mov(__qword_ptr[rbx + DirectWrite_number], rax);
 
             //If offset is 0 we don't need to add anything, which it is currently
-            
+
             if (GPR_Offset > 0) {
                 asm.mov(__dword_ptr[rbx + GPR_Offset], eax);
             } else {
@@ -1099,6 +1157,13 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public static void EmitUpdateCurrentCycle(Assembler asm, int addValue) {
             asm.add(__qword_ptr[rbx + CurrentCycle_Offset], addValue);
+        }
+
+        public static void EmitUpdatePC(Assembler asm, int numberOfInstructions) {
+            int offset = numberOfInstructions * 4;
+            //asm.add(__dword_ptr[rbx + CurrentPCOffset], offset - 4);
+            asm.add(__dword_ptr[rbx + PCOffset], offset);
+            asm.add(__dword_ptr[rbx + NextPCOffset], offset + 4);
         }
 
         public static void EmitBlockEntry(Assembler asm) {
@@ -1141,7 +1206,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.pop(rsi);
             asm.pop(rdi);
             asm.pop(rbx);
-        }       
+        }
 
         public static Span<byte> EmitStubBlock() {
             //Stub code in all non compiled blocks
@@ -1172,7 +1237,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
     }
 
-    public unsafe class x64CacheBlock {     
+    public unsafe class x64CacheBlock {
         public uint Address;
         public uint TotalCycles;
         public int SizeOfAllocatedBytes;
