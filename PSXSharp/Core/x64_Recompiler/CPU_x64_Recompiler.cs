@@ -46,7 +46,10 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static CPU_x64_Recompiler Instance;
 
         public static delegate* unmanaged[Stdcall]<void> StubBlockPointer;  //Stub block to call recompiler
-        private const int MAX_INSTRUCTIONS_PER_BLOCK = 127;
+
+        //This variable probably shouldn't be that high
+        private const int MAX_INSTRUCTIONS_PER_BLOCK = 100;
+
         private static readonly bool ForceLoadDelaySlotEmulation = false;
 
         bool IsLoadingEXE;
