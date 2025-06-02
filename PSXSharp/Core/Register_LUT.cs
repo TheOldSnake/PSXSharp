@@ -2,7 +2,7 @@
 using System.Diagnostics;
 using Instruction = PSXSharp.Core.Common.Instruction;
 
-namespace PSXSharp.Core.MSIL_Recompiler {
+namespace PSXSharp.Core {
     public static unsafe class Register_LUT {
 
         //Returns the registers used by instructions, with the write target being always at index 0
@@ -44,7 +44,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
 
         private static uint[] bxx(Instruction instruction) {
             uint rs = instruction.Get_rs();
-            bool link = ((instruction.FullValue >> 17) & 0xF) == 0x8;
+            bool link = (instruction.FullValue >> 17 & 0xF) == 0x8;
             return [(uint)(link? 31:0), rs];
         }
 
@@ -152,7 +152,7 @@ namespace PSXSharp.Core.MSIL_Recompiler {
         }
 
         private static uint[] cop2(Instruction instruction) {
-            if ((instruction.FullValue >> 25) == 0b0100101) {
+            if (instruction.FullValue >> 25 == 0b0100101) {
                 return [0];
             }
 

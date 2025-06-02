@@ -1,5 +1,4 @@
 ﻿using Iced.Intel;
-using PSXSharp.Core.MSIL_Recompiler;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
