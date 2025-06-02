@@ -385,11 +385,6 @@ namespace PSXSharp {
             Response ack = new Response(new byte[] { header[0], header[1], header[2], header[3], 
                 subHeader[0], subHeader[1], subHeader[2], subHeader[3]}, Delays.INT3_General, Flags.INT3);
             cdrom.Responses.Enqueue(ack);
-
-            for (int i = 0; i < header.Length; i++) { 
-                Console.Write(" --> " + header[i].ToString("x"));
-            }
-            Console.WriteLine();
         }
 
         private static void GetLocP(CD_ROM cdrom) {
