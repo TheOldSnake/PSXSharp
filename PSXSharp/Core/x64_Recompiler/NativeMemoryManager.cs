@@ -28,7 +28,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         private byte* AddressOfNextBlock;
         private CPUNativeStruct* CPU_Struct_Ptr;
 
-        private static NativeMemoryManager Instance = new NativeMemoryManager();
+        private static NativeMemoryManager Instance;
 
         //Keeps a list of invalid blocks that were allocated to a new memory
         //to use their old space
@@ -56,12 +56,17 @@ namespace PSXSharp.Core.x64_Recompiler {
         public void Reset() {
             NativeMemory.Clear(CPU_Struct_Ptr, (nuint)sizeof(CPUNativeStruct));
             NativeMemory.Clear(ExecutableMemoryBase, SIZE_OF_EXECUTABLE_MEMORY);
+            NativeMemory.Clear(StubBlock, (nuint)StubBlockSize);
+
             AddressOfNextBlock = ExecutableMemoryBase;
             InvalidBlocks.Clear();
             Console.WriteLine("[NativeMemoryManager] Memory Cleared");
         }
 
         public static NativeMemoryManager GetMemoryManager() {
+            if (Instance == null) {
+                Instance = new NativeMemoryManager();
+            }
             return Instance;
         }
 
