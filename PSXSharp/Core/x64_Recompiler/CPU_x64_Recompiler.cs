@@ -151,6 +151,14 @@ namespace PSXSharp.Core.x64_Recompiler {
         public static ulong StubBlockHandler() {
             //Code to be called in all non compiled blocks
 
+            //If we end up in an invalid address
+            if ((CPU_Struct_Ptr->PC & 0x3) != 0) {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("[x64 JIT] Invalid PC!");
+                Console.ForegroundColor = ConsoleColor.Green;
+                throw new Exception();
+            }
+
             //If we need to load an EXE, this should happen here because 
             //the LoadTestRom will change the PC 
             if (CPU_Struct_Ptr->PC == 0x80030000) {
