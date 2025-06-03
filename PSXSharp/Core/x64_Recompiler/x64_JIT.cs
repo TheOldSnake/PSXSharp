@@ -5,6 +5,7 @@ using PSXSharp.Core.Common;
 using Iced.Intel;
 using static Iced.Intel.AssemblerRegisters;
 using static PSXSharp.Core.x64_Recompiler.AddressGetter;
+using System.Diagnostics;
 
 namespace PSXSharp.Core.x64_Recompiler {
 
@@ -1192,6 +1193,10 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             } else if(address == 0xB0){
                 asm.mov(r15, GetTTYB0Handler());
+
+            } else {
+                //Unreachable
+                throw new UnreachableException();
             }
 
             asm.call(r15);
