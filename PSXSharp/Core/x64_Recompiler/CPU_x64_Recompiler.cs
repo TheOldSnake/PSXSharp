@@ -392,11 +392,17 @@ namespace PSXSharp.Core.x64_Recompiler {
             //LW then LW then Read
             //LWL/R then LWL/R then Read
             //Basically any consecutive loads followed by a read directly
-            if ((IsAnyLoad(nextInstruction) && regsOfNextInstruction[0] == regsOfCurrentInstruction[0])) {
+            //TODO: Handle N loads followed by a read 
+            if ((IsAnyLoad(nextInstruction) && regsOfNextInstruction[0] == regsOfCurrentInstruction[0])) {            
                 //Check the if 3rd instruction reads from the load target
                 if (HasReadDependancy(regsOfCurrentInstruction, regsOfNextNextInstruction)) {
                     return 3;
                 }
+
+                if (HasReadDependancy(regsOfCurrentInstruction, regsOfNextInstruction)) {
+                    return 2;
+                }
+
                 return 0;
             }
 
