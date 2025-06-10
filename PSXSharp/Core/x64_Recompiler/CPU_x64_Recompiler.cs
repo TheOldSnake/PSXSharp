@@ -23,6 +23,8 @@ namespace PSXSharp.Core.x64_Recompiler {
         public static CPUNativeStruct* CPU_Struct_Ptr;
         public const uint RESET_VECTOR = 0xBFC00000;
         public const uint BIOS_START = 0x1FC00000;          //Reset vector but masked
+        public const uint A_FunctionsTableAddress = 0xA0;   //A-Functions Table
+        public const uint B_FunctionsTableAddress = 0xB0;   //B-Functions Table
         public const uint BIOS_SIZE = 512 * 1024;           //512 KB
         public const uint RAM_SIZE = 2 * 1024 * 1024;       //2 MB
         public const uint RAM_SIZE_8MB = RAM_SIZE * 4;      //8 MB
@@ -236,7 +238,8 @@ namespace PSXSharp.Core.x64_Recompiler {
             x64_JIT.EmitBlockEntry(emitter);
 
             //Emit TTY Handlers on these addresses
-            if (cacheBlock.Address == 0xA0 || cacheBlock.Address == 0xB0) {
+            if (cacheBlock.Address == A_FunctionsTableAddress || 
+                cacheBlock.Address == B_FunctionsTableAddress) {
                 x64_JIT.EmitTTY(emitter, cacheBlock.Address);
             }
 
