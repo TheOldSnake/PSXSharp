@@ -25,7 +25,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         public const uint BIOS_START = 0x1FC00000;          //Reset vector but masked
         public const uint BIOS_SIZE = 512 * 1024;           //512 KB
         public const uint RAM_SIZE = 2 * 1024 * 1024;       //2 MB
-        public const uint RAM_SIZE_8MB = RAM_SIZE * 4;
+        public const uint RAM_SIZE_8MB = RAM_SIZE * 4;      //8 MB
 
         const uint CYCLES_PER_SECOND = 33868800;
         const uint CYCLES_PER_FRAME = CYCLES_PER_SECOND / 60;
