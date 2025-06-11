@@ -2,8 +2,8 @@
 using OpenTK.Graphics.OpenGL4;
 using System;
 
-namespace PSXSharp {
-    public class Shader {  
+namespace PSXSharp.Shaders {
+    public partial class Shader {  
         public int Program;
         public Shader(string vert, string frag) {
             int vertexShader = GL.CreateShader(ShaderType.VertexShader);    //Create a vertex shader and get a pointer
