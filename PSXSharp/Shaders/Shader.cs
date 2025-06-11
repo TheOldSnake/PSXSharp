@@ -5,6 +5,7 @@ using System;
 namespace PSXSharp.Shaders {
     public partial class Shader {  
         public int Program;
+
         public Shader(string vert, string frag) {
             int vertexShader = GL.CreateShader(ShaderType.VertexShader);    //Create a vertex shader and get a pointer
             GL.ShaderSource(vertexShader, vert);                            //Bind the source code string
@@ -33,6 +34,7 @@ namespace PSXSharp.Shaders {
             GL.DeleteShader(fragmentShader);
             GL.DeleteShader(vertexShader);
         }
+
         private void CompileShader(int shader) {
             GL.CompileShader(shader);
             GL.GetShader(shader, ShaderParameter.CompileStatus, out int code);  //Check for compilation errors
@@ -46,6 +48,7 @@ namespace PSXSharp.Shaders {
                 Console.ForegroundColor = previousColor;
             }
         }
+
         public void Use() {
             GL.UseProgram(Program);
         }
