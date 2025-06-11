@@ -99,16 +99,7 @@ namespace PSXSharp {
             mainWindow.Dispose();   //Will reach this if the render window 
             mainWindow = null;
             SerialIO1.Dispose();
-        }
-
-        /*public byte[] ImageToByteArray(string Icon) {
-            var image = (Image<Rgba32>)SixLabors.ImageSharp.Image.Load(Configuration.Default, Icon);
-            var pixels = new byte[4 * image.Width * image.Height];
-            image.CopyPixelDataTo(pixels);
-
-            return pixels;
-        }*/
-
+        }   
     }
 
     public class Renderer : GameWindow {    //Now it gets really messy 
