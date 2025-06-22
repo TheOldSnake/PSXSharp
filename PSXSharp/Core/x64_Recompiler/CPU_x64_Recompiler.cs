@@ -145,7 +145,6 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //Console.WriteLine("Running " + CPU_Struct_Ptr->PC.ToString("x"));
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, IsBIOSBlock);
-            x64CacheBlock cache = CurrentCache[block];
             CurrentCache[block].FunctionPointer();
         }
 
