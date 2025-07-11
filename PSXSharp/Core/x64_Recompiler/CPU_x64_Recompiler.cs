@@ -149,7 +149,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static ulong StubBlockHandler() {
+        public static delegate* unmanaged[Stdcall]<void> StubBlockHandler() {
             //Code to be called in all non compiled blocks
 
             //If we end up in an invalid address
@@ -198,7 +198,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //Console.WriteLine("Running after compilation " + CPU_Struct_Ptr->PC.ToString("x"));
             //Return the address to be called in asm
-            return (ulong)currentBlock.FunctionPointer;
+            return currentBlock.FunctionPointer;
         }
 
         public void SetInvalidAllRAMBlocks() {

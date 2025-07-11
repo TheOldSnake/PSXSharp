@@ -74,7 +74,7 @@
         }
 
         public static ulong GetStubBlockHandlerAddress() {
-            delegate* unmanaged[Stdcall]<ulong> ptr = &StubBlockHandler;
+            delegate* unmanaged[Stdcall]<delegate* unmanaged[Stdcall]<void>> ptr = &StubBlockHandler;
             return (ulong)ptr;
         }
 
