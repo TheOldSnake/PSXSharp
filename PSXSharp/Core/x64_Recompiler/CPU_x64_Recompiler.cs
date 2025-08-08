@@ -74,6 +74,8 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public void Reset() {
+            CyclesDone = 0;
+
             MemoryManager.Reset();
 
             CPU_Struct_Ptr = MemoryManager.GetCPUNativeStructPtr();

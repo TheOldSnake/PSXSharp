@@ -157,7 +157,7 @@ namespace PSXSharp.Peripherals.IO {
         }
 
         public void Transfare(byte value) {
- 
+
             RX_Data = 0xFF;
             TX_Data = value;
             Status.RX_FIFO_Not_Empty = 1;   //This sould probably have a delay.
