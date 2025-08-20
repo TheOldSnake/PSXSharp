@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
 
-namespace PSXSharp {
+namespace PSXSharp.Peripherals.IO {
     public class MemoryCard {       
         byte[] Data;
         byte FLAG = 0x8;
@@ -15,7 +15,7 @@ namespace PSXSharp {
         public bool ACK;
 
         public MemoryCard(byte[] data) {
-            this.Data = data;
+            Data = data;
         }
 
         internal byte Response(uint command) {
@@ -71,7 +71,7 @@ namespace PSXSharp {
                 case 3: return 0x5D;    //Receive Memory Card ID2
 
                 case 4:
-                    MSB_address = (byte)(command);        //Send Address MSB  ;\sector number (0..3FFh)
+                    MSB_address = (byte)command;        //Send Address MSB  ;\sector number (0..3FFh)
                     return 0x0;
 
                 case 5:
@@ -92,8 +92,8 @@ namespace PSXSharp {
                 case 9: return LSB_address;            //Receive Confirmed Address LSB
 
                 //Handle 128 byte transfer
-                case int when (SequenceNumber >= 10 && SequenceNumber < 10 + 128):
-                    byte dataSector = Data[(Address * 128) + SequenceNumber - 10];
+                case int when SequenceNumber >= 10 && SequenceNumber < 10 + 128:
+                    byte dataSector = Data[Address * 128 + SequenceNumber - 10];
                     CHK ^= dataSector;
 
                     return dataSector;
@@ -114,13 +114,13 @@ namespace PSXSharp {
                 case 3: return 0x5D;    //Receive Memory Card ID2
 
                 case 4:
-                    MSB_address = (byte)(command);        //Send Address MSB  ;\sector number (0..3FFh)
+                    MSB_address = (byte)command;        //Send Address MSB  ;\sector number (0..3FFh)
                     return 0x0;
 
                 case 5:
                     LSB_address = (byte)command;       //Send Address LSB  
                     CHK = (byte)(MSB_address ^ LSB_address);
-                    Address = (ushort)((MSB_address) << 8 | LSB_address);
+                    Address = (ushort)(MSB_address << 8 | LSB_address);
 
                     if (Address > 0x3FF) {
                         Console.Write("[MEMORYCARD] Wrong write address! : " + Address.ToString("x"));
@@ -130,9 +130,9 @@ namespace PSXSharp {
                     return 0x0;
 
                 //Handle 128 byte transfer
-                case int when (SequenceNumber >= 6 && SequenceNumber < 6 + 128):
+                case int when SequenceNumber >= 6 && SequenceNumber < 6 + 128:
 
-                    Data[(Address*128) + SequenceNumber - 6] = (byte)command;
+                    Data[Address*128 + SequenceNumber - 6] = (byte)command;
                     CHK = (byte)(CHK ^ (byte)command);
 
                     return 0x0;                         //Don't care
@@ -162,7 +162,7 @@ namespace PSXSharp {
 
         private void SaveMemoryContent() {
             File.WriteAllBytes("memoryCard.mcd",Data);
-            FLAG  = (byte)(FLAG & (~0x8));
+            FLAG  = (byte)(FLAG & ~0x8);
             Console.ForegroundColor = ConsoleColor.Blue;
             Console.WriteLine("[MEMORYCARD] SAVED!");
             Console.ForegroundColor = ConsoleColor.Green;

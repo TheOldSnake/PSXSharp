@@ -2,7 +2,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace PSXSharp {
+namespace PSXSharp.Peripherals.IO {
     public class Controller {
         public bool ACK;
         public bool IsConnected;
@@ -90,7 +90,7 @@ namespace PSXSharp {
                         SequenceNum = 0;
                         ACK = false;
                     }
-                    return (byte)((Buttons >> 8) & 0xff);
+                    return (byte)(Buttons >> 8 & 0xff);
 
                 case 4: return RightJoyX;
                 case 5: return RightJoyY;
@@ -146,7 +146,7 @@ namespace PSXSharp {
 
                 case 3:
                     switch (CurrentCommand) {
-                        case 0x42: return (byte)((Buttons >> 8) & 0xff);
+                        case 0x42: return (byte)(Buttons >> 8 & 0xff);
                         case 0x43: return 0x0;
                         case 0x44: if (data == 0x02) { LEDStatus = LEDStatus_Temp; Console.WriteLine("[PAD] LED: " + LEDStatus); } return 0x0;
                         case 0x45: return 0x2;
@@ -250,11 +250,11 @@ namespace PSXSharp {
                 if (DualSenseDictionary.ContainsKey(j)) {
                     if (externalController.IsButtonDown(j)) {
                         int bit = ~(1 << DualSenseDictionary[j]);
-                        Buttons &= (ushort)(bit);
+                        Buttons &= (ushort)bit;
                     }
                     else {
-                        int bit = (1 << DualSenseDictionary[j]);
-                        Buttons |= (ushort)(bit);
+                        int bit = 1 << DualSenseDictionary[j];
+                        Buttons |= (ushort)bit;
                     }
                 }
             }
@@ -270,10 +270,10 @@ namespace PSXSharp {
             float rightY = externalController.GetAxis(5);
 
             //Convert [-1 , 1] to [0 , 0xFF]
-            RightJoyX = (byte)(((rightX + 1.0f) / 2.0f) * 0xFF);
-            LeftJoyX = (byte)(((leftX + 1.0f) / 2.0f) * 0xFF);
-            RightJoyY = (byte)(((rightY + 1.0f) / 2.0f) * 0xFF);
-            LeftJoyY = (byte)(((leftY + 1.0f) / 2.0f) * 0xFF);
+            RightJoyX = (byte)((rightX + 1.0f) / 2.0f * 0xFF);
+            LeftJoyX = (byte)((leftX + 1.0f) / 2.0f * 0xFF);
+            RightJoyY = (byte)((rightY + 1.0f) / 2.0f * 0xFF);
+            LeftJoyY = (byte)((leftY + 1.0f) / 2.0f * 0xFF);
         }
     }
 }
