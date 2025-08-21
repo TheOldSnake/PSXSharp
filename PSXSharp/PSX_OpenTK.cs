@@ -251,6 +251,9 @@ namespace PSXSharp {
             GL.Uniform1(GL.GetUniformLocation(Shader.Program, "u_vramTex"), 0);
             GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);
 
+            if (JoystickStates[0] != null) {
+                Console.WriteLine($"Controller Name: {JoystickStates[0].Name}");
+            }
         }
 
         public void SetOffset(Int16 x, Int16 y) {
