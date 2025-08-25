@@ -1,5 +1,6 @@
 ﻿using PSXSharp.Core;
 using PSXSharp.Core.x64_Recompiler;
+using System.Runtime.CompilerServices;
 
 namespace PSXSharp {
     public unsafe class RAM {
@@ -10,64 +11,39 @@ namespace PSXSharp {
         public uint LoadWord(uint address) {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-
-            byte b0 = Data[final + 0];
-            byte b1 = Data[final + 1];
-            byte b2 = Data[final + 2];
-            byte b3 = Data[final + 3];
-
-            return (uint)(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24));
+            return Unsafe.Read<uint>(Data + final);
         }
 
         public void StoreWord(uint address, uint value) {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-
-            byte b0 = (byte)value;
-            byte b1 = (byte)(value >> 8);
-            byte b2 = (byte)(value >> 16);
-            byte b3 = (byte)(value >> 24);
-
-            Data[final + 0] = b0;
-            Data[final + 1] = b1;
-            Data[final + 2] = b2;
-            Data[final + 3] = b3;
+            Unsafe.Write<uint>(Data + final, value);
             CPUWrapper.GetCPUInstance().SetInvalidRAMBlock(final >> 2);
         }
 
         public ushort LoadHalf(uint address) {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-
-            ushort b0 = Data[final + 0];
-            ushort b1 = Data[final + 1];
-
-            return ((ushort)(b0 | (b1 << 8)));
+            return Unsafe.Read<ushort>(Data + final);
         }
 
         public void StoreHalf(uint address, ushort value) {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-
-            byte b0 = (byte)value;
-            byte b1 = (byte)(value >> 8);
-
-            Data[final + 0] = b0;
-            Data[final + 1] = b1;
+            Unsafe.Write<ushort>(Data + final, value);
             CPUWrapper.GetCPUInstance().SetInvalidRAMBlock(final >> 2);
         }
 
         public byte LoadByte(uint address) {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-
-            return Data[final];
+            return Unsafe.Read<byte>(Data + final);
         }
 
         public void StoreByte(uint address, byte value) {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-            Data[final] = value;
+            Unsafe.Write<byte>(Data + final, value);
             CPUWrapper.GetCPUInstance().SetInvalidRAMBlock(final >> 2);
         }
 
