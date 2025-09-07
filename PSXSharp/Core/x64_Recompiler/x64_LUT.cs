@@ -36,112 +36,112 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static void special(Instruction instruction, Assembler asm) {
-            SpecialLookUpTable[instruction.Get_Subfunction()](instruction, asm);
+            SpecialLookUpTable[instruction.Sub](instruction, asm);
         }
 
         private static void bxx(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            uint imm = instruction.GetSignedImmediate();
-            bool bgez = ((instruction.FullValue >> 16) & 1) == 1;
-            bool link = ((instruction.FullValue >> 17) & 0xF) == 0x8;
+            int rs = (int)instruction.Rs;
+            uint imm = instruction.SignedImm;
+            bool bgez = ((instruction.Value >> 16) & 1) == 1;
+            bool link = ((instruction.Value >> 17) & 0xF) == 0x8;
             x64_JIT.EmitBXX(rs, imm, link, bgez, asm);
         }
 
         private static void jump(Instruction instruction, Assembler asm) {
-            uint target = (CPU_x64_Recompiler.CPU_Struct_Ptr->Next_PC & 0xf0000000) | (instruction.GetImmediateJumpAddress() << 2);
+            uint target = (CPU_x64_Recompiler.CPU_Struct_Ptr->Next_PC & 0xf0000000) | (instruction.JumpImm << 2);
             x64_JIT.EmitJump(target, asm);
         }
 
         private static void jal(Instruction instruction, Assembler asm) {
-            uint target = (CPU_x64_Recompiler.CPU_Struct_Ptr->Next_PC & 0xf0000000) | (instruction.GetImmediateJumpAddress() << 2);
+            uint target = (CPU_x64_Recompiler.CPU_Struct_Ptr->Next_PC & 0xf0000000) | (instruction.JumpImm << 2);
             x64_JIT.EmitJal(target, asm);
         }
 
         private static void beq(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitBranchIf(rs, rt, imm, BranchIf.BEQ, asm);
         }
 
         private static void bne(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitBranchIf(rs, rt, imm, BranchIf.BNE, asm);
         }
 
         private static void blez(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitBranchIf(rs, 0, imm, BranchIf.BLEZ, asm);
         }
 
         private static void bgtz(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitBranchIf(rs, 0, imm, BranchIf.BGTZ, asm);
         }
 
         private static void addi(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitArithmetic_i(rs, rt, imm, ArithmeticSignals.ADD, asm);
         }
 
         private static void addiu(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitArithmeticI_U(rs, rt, imm, ArithmeticSignals.ADD, asm);
         }
 
         private static void slti(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitSlti(rs, rt, imm, true, asm);
         }
 
         private static void sltiu(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitSlti(rs, rt, imm, false, asm);
         }
 
         private static void andi(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.Imm;
             x64_JIT.EmitLogic_i(rs, rt, imm, LogicSignals.AND, asm);
         }
 
         private static void ori(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.Imm;
             x64_JIT.EmitLogic_i(rs, rt, imm, LogicSignals.OR, asm);
         }
 
         private static void xori(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.Imm;
             x64_JIT.EmitLogic_i(rs, rt, imm, LogicSignals.XOR, asm);
         }
 
         private static void lui(Instruction instruction, Assembler asm) {
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetImmediate();
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.Imm;
             x64_JIT.EmitLUI(rt, imm, asm);
         }
 
         private static void cop0(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
 
             switch (rs) {
                 case 0b00100:
@@ -155,7 +155,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 case 0b10000:
                     x64_JIT.EmitRFE(asm);
                     break;
-                default: throw new Exception("Unhandled cop0 instruction: " + instruction.FullValue.ToString("X"));
+                default: throw new Exception("Unhandled cop0 instruction: " + instruction.Value.ToString("X"));
             }
         }
 
@@ -164,14 +164,14 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static void cop2(Instruction instruction, Assembler asm) {
-            if ((instruction.FullValue >> 25) == 0b0100101) {    //COP2 imm25 command
-                x64_JIT.EmitCOP2Command(instruction.FullValue, asm);
+            if ((instruction.Value >> 25) == 0b0100101) {    //COP2 imm25 command
+                x64_JIT.EmitCOP2Command(instruction.Value, asm);
                 return;
             }
 
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
 
             switch (rs) {
                 case 0b00000:   //MFC
@@ -190,7 +190,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                     x64_JIT.EmitMTC2_CTC2(rt, rd, asm);
                     break;
 
-                default: throw new Exception("Unhandled GTE opcode: " + instruction.Get_rs().ToString("X"));
+                default: throw new Exception("Unhandled GTE opcode: " + instruction.Rs.ToString("X"));
             }
         }
 
@@ -199,86 +199,86 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static void lb (Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryLoad(rs, rt, imm, MemoryReadWriteSize.BYTE, true, asm);
         }
 
         private static void lh(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryLoad(rs, rt, imm, MemoryReadWriteSize.HALF, true, asm);
         }
 
         private static void lw(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryLoad(rs, rt, imm, MemoryReadWriteSize.WORD, false, asm);
         }
 
         private static void lbu(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryLoad(rs, rt, imm, MemoryReadWriteSize.BYTE, false, asm);
         }
 
         private static void lhu(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryLoad(rs, rt, imm, MemoryReadWriteSize.HALF, false, asm);
         }
 
         private static void sb(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryStore(rs, rt, imm, MemoryReadWriteSize.BYTE, asm);
         }
 
         private static void sh(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryStore(rs, rt, imm, MemoryReadWriteSize.HALF, asm);
         }
 
         private static void sw(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitMemoryStore(rs, rt, imm, MemoryReadWriteSize.WORD, asm);
         }
 
         private static void swl(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitSWL(rs, rt, imm, asm);
         }
 
         private static void swr(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitSWR(rs, rt, imm, asm);
         }
 
         private static void lwl(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitLWL(rs, rt, imm, asm);
         }
 
         private static void lwr(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitLWR(rs, rt, imm, asm);
         }
 
@@ -291,9 +291,9 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static void lwc2(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitLWC2(rs, rt, imm, asm);
         }
 
@@ -310,9 +310,9 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static void swc2(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            uint imm = instruction.GetSignedImmediate();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            uint imm = instruction.SignedImm;
             x64_JIT.EmitSWC2(rs, rt, imm, asm);
         }
 
@@ -321,55 +321,55 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static void sll(Instruction instruction, Assembler asm) {
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
-            uint sa = instruction.Get_sa();
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
+            uint sa = instruction.Sa;
             x64_JIT.EmitShift(rt, rd, sa, ShiftSignals.LEFT, asm);
         }
 
         private static void srl(Instruction instruction, Assembler asm) {
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
-            uint sa = instruction.Get_sa();
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
+            uint sa = instruction.Sa;
             x64_JIT.EmitShift(rt, rd, sa, ShiftSignals.RIGHT, asm);
         }
 
         private static void sra(Instruction instruction, Assembler asm) {
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
-            uint sa = instruction.Get_sa();
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
+            uint sa = instruction.Sa;
             x64_JIT.EmitShift(rt, rd, sa, ShiftSignals.RIGHT_ARITHMETIC, asm);
         }
 
         private static void sllv(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
             x64_JIT.EmitShift_v(rs, rt, rd, ShiftSignals.LEFT, asm);
         }
 
         private static void srlv(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
             x64_JIT.EmitShift_v(rs, rt, rd, ShiftSignals.RIGHT, asm);
         }
 
         private static void srav(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
-            int rd = (int)instruction.Get_rd();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
+            int rd = (int)instruction.Rd;
             x64_JIT.EmitShift_v(rs, rt, rd, ShiftSignals.RIGHT_ARITHMETIC, asm);
         }
 
         private static void jr(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
+            int rs = (int)instruction.Rs;
             x64_JIT.EmitJR(rs, asm);
         }
 
         private static void jalr(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rd = (int)instruction.Get_rd();
+            int rs = (int)instruction.Rs;
+            int rd = (int)instruction.Rd;
             x64_JIT.EmitJalr(rs, rd, asm);
         }
 
@@ -382,116 +382,116 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static void mfhi(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
+            int rd = (int)instruction.Rd;
             x64_JIT.EmitMF(rd, true, asm);
         }
 
         private static void mthi(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
+            int rs = (int)instruction.Rs;
             x64_JIT.EmitMT(rs, true, asm);
         }
 
         private static void mflo(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
+            int rd = (int)instruction.Rd;
             x64_JIT.EmitMF(rd, false, asm);
         }
 
         private static void mtlo(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
+            int rs = (int)instruction.Rs;
             x64_JIT.EmitMT(rs, false, asm);
         }
 
         private static void mult(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitMULT(rs, rt, true, asm);
         }
 
         private static void multu(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitMULT(rs, rt, false, asm);
         }
 
         private static void div(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitDIV(rs, rt, true, asm);
         }
 
         private static void divu(Instruction instruction, Assembler asm) {
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitDIV(rs, rt, false, asm);
         }
 
         private static void add(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitArithmetic(rs, rt, rd, ArithmeticSignals.ADD, asm);
         }
 
         private static void addu(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitArithmeticU(rs, rt, rd, ArithmeticSignals.ADD, asm);
         }
 
         private static void subu(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitArithmeticU(rs, rt, rd, ArithmeticSignals.SUB, asm);
         }
 
         private static void sub(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitArithmetic(rs, rt, rd, ArithmeticSignals.SUB, asm);
         }
 
         public static void or(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitLogic(rs, rt, rd, LogicSignals.OR, asm);
         }
 
         private static void and(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitLogic(rs, rt, rd, LogicSignals.AND, asm);
         }
 
         private static void xor(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitLogic(rs, rt, rd, LogicSignals.XOR, asm);
         }
 
         private static void nor(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitLogic(rs, rt, rd, LogicSignals.NOR, asm);
         }
 
         private static void slt(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitSlt(rs, rt, rd, true, asm);
         }
 
         private static void sltu(Instruction instruction, Assembler asm) {
-            int rd = (int)instruction.Get_rd();
-            int rs = (int)instruction.Get_rs();
-            int rt = (int)instruction.Get_rt();
+            int rd = (int)instruction.Rd;
+            int rs = (int)instruction.Rs;
+            int rt = (int)instruction.Rt;
             x64_JIT.EmitSlt(rs, rt, rd, false, asm);
         }
     }

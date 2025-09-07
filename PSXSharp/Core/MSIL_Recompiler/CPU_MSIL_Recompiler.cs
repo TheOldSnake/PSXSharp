@@ -167,7 +167,7 @@ namespace PSXSharp {
             int instructionIndex = 0;
 
             for (;;) {
-                instruction.FullValue = instructionsSpan[instructionIndex++];
+                instruction.Value = instructionsSpan[instructionIndex++];
                 EmitInstruction(instruction, cycleMultiplier);
 
                 //We end the block if any of these conditions is true
@@ -201,11 +201,11 @@ namespace PSXSharp {
             MSIL_JIT.EmitBranchDelayHandler(CurrentBlock);
 
             //Don't compile NOPs
-            if (instruction.FullValue != 0) {
-                MSIL_LUT.MainLookUpTable[instruction.GetOpcode()](this, instruction);
+            if (instruction.Value != 0) {
+                MSIL_LUT.MainLookUpTable[instruction.Op](this, instruction);
             }
 
-            CurrentBlock.Checksum += instruction.FullValue;
+            CurrentBlock.Checksum += instruction.Value;
             CurrentBlock.Total++;
             MSIL_JIT.EmitRegisterTransfare(CurrentBlock);
             MSIL_JIT.UpdateCurrentCycle(CurrentBlock, cyclesPerInstruction);
@@ -246,9 +246,9 @@ namespace PSXSharp {
         }
 
         private bool IsJumpOrBranch(Instruction instruction) {
-            uint op = instruction.GetOpcode();
+            uint op = instruction.Op;
             if (op == 0) {
-                uint sub = instruction.Get_Subfunction();
+                uint sub = instruction.Sub;
                 return sub == 0x8 || sub == 0x9 ;     //JR, JALR,
             } else {
                 return op >= 1 && op <= 7;            //BXX, J, JAL, BEQ, BNE, BLEZ, BGTZ 
@@ -256,9 +256,9 @@ namespace PSXSharp {
         }
 
         private bool IsSyscallOrBreak(Instruction instruction) {
-            uint op = instruction.GetOpcode();
+            uint op = instruction.Op;
             if (op == 0) {
-                uint sub = instruction.Get_Subfunction();
+                uint sub = instruction.Sub;
                 return sub == 0xC || sub == 0xD;     //Syscall, Break
             }
             return false;
@@ -287,7 +287,7 @@ namespace PSXSharp {
 
         private static bool InstructionIsGTE(CPU_MSIL_Recompiler cpu) {
             return false; //Does not work with current JIT
-            return (cpu.CurrentInstruction.FullValue & 0xFE000000) == 0x4A000000;
+            return (cpu.CurrentInstruction.Value & 0xFE000000) == 0x4A000000;
         }
 
         private void RegisterTransfer(CPU_MSIL_Recompiler cpu){

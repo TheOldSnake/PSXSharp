@@ -142,7 +142,7 @@ namespace PSXSharp.Core.Interpreter {
                 return;
             }
 
-            CurrentInstruction.FullValue = BUS.LoadWord(PC);    
+            CurrentInstruction.Value = BUS.LoadWord(PC);    
 
             DelaySlot = Branch;   //Branch delay 
             Branch = false;
@@ -172,15 +172,15 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private bool InstructionIsGTE(CPU_Interpreter cpu) {          
-            return (cpu.CurrentInstruction.FullValue & 0xFE000000) == 0x4A000000;
+            return (cpu.CurrentInstruction.Value & 0xFE000000) == 0x4A000000;
         }
 
         private void ExecuteInstruction(Instruction instruction) {
-            MainLookUpTable[instruction.GetOpcode()](this, instruction);
+            MainLookUpTable[instruction.Op](this, instruction);
         }
 
         private static void special(CPU_Interpreter cpu, Instruction instruction) {
-            SpecialLookUpTable[instruction.Get_Subfunction()](cpu, instruction);
+            SpecialLookUpTable[instruction.Sub](cpu, instruction);
         }
 
         private void RegisterTransfer(CPU_Interpreter cpu){    //Handle register transfers and delay slot
@@ -340,7 +340,7 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void cop0(CPU_Interpreter cpu, Instruction instruction) {
-            switch (instruction.Get_rs()) {
+            switch (instruction.Rs) {
                 case 0b00100:
                     mtc0(cpu, instruction);
                     break;
@@ -353,13 +353,13 @@ namespace PSXSharp.Core.Interpreter {
                     rfe(cpu, instruction);
                     break;
 
-                default: throw new Exception("Unhandled cop0 instruction: " + instruction.FullValue.ToString("X"));
+                default: throw new Exception("Unhandled cop0 instruction: " + instruction.Value.ToString("X"));
             }
         }
 
         private static void illegal(CPU_Interpreter cpu, Instruction instruction) {
             Console.ForegroundColor = ConsoleColor.Red; 
-            Console.WriteLine("[CPU] Illegal instruction: " + instruction.FullValue.ToString("X").PadLeft(8,'0') + " - Opcode(" + instruction.GetOpcode().ToString("X") + ") - " + " at PC: " + cpu.Current_PC.ToString("x"));
+            Console.WriteLine("[CPU] Illegal instruction: " + instruction.Value.ToString("X").PadLeft(8,'0') + " - Opcode(" + instruction.Op.ToString("X") + ") - " + " at PC: " + cpu.Current_PC.ToString("x"));
             Console.ForegroundColor = ConsoleColor.Green;
             Exception(cpu, (uint)CPU.Exceptions.IllegalInstruction);
             cpu.IsStopped = true;
@@ -370,14 +370,14 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void swc2(CPU_Interpreter cpu, Instruction instruction) {
-            uint address = cpu.GPR[instruction.Get_rs()] + instruction.GetSignedImmediate();
+            uint address = cpu.GPR[instruction.Rs] + instruction.SignedImm;
 
             if ((address & 0x3) != 0) {
                 Exception(cpu, (uint)CPU.Exceptions.LoadAddressError);
                 return;
             }
 
-            uint rt = instruction.Get_rt();
+            uint rt = instruction.Rt;
             uint word = cpu.GTE.read(rt);
             cpu.BUS.StoreWord(address, word);
         }
@@ -396,7 +396,7 @@ namespace PSXSharp.Core.Interpreter {
 
         private static void lwc2(CPU_Interpreter cpu, Instruction instruction) {
             //TODO add 2 instructions delay
-            uint address = cpu.GPR[instruction.Get_rs()] + instruction.GetSignedImmediate();
+            uint address = cpu.GPR[instruction.Rs] + instruction.SignedImm;
 
             if ((address & 0x3) != 0) {
                 Exception(cpu, (uint)CPU.Exceptions.LoadAddressError);
@@ -404,7 +404,7 @@ namespace PSXSharp.Core.Interpreter {
             }
 
             uint word = cpu.BUS.LoadWord(address);
-            uint rt = instruction.Get_rt();
+            uint rt = instruction.Rt;
             cpu.GTE.write(rt, word);
 
         }
@@ -422,11 +422,11 @@ namespace PSXSharp.Core.Interpreter {
 
             //TODO add 2 instructions delay
 
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
-            uint value =  cpu.GPR[instruction.Get_rt()];               
+            uint value =  cpu.GPR[instruction.Rt];               
             uint current_value = cpu.BUS.LoadWord((uint)(final_address & ~3));     //Last 2 bits are for alignment position only 
 
             uint finalValue;
@@ -446,11 +446,11 @@ namespace PSXSharp.Core.Interpreter {
         private static void swl(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
 
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
-            uint value = cpu.GPR[instruction.Get_rt()];           
+            uint value = cpu.GPR[instruction.Rt];           
             uint current_value = cpu.BUS.LoadWord((uint)(final_address&~3));     //Last 2 bits are for alignment position only 
 
             uint finalValue;
@@ -470,9 +470,9 @@ namespace PSXSharp.Core.Interpreter {
         private static void lwr(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
 
-            uint imm = instruction.GetSignedImmediate();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint imm = instruction.SignedImm;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
 
             uint final_address = cpu.GPR[rs] + imm;
 
@@ -500,9 +500,9 @@ namespace PSXSharp.Core.Interpreter {
 
         private static void lwl(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
-            uint imm = instruction.GetSignedImmediate();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint imm = instruction.SignedImm;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             uint final_address = cpu.GPR[rs] + imm;
 
             uint current_value =  cpu.GPR[rt];
@@ -534,38 +534,38 @@ namespace PSXSharp.Core.Interpreter {
                 return;
             }*/
 
-            if (instruction.FullValue >> 25 == 0b0100101) {    //COP2 imm25 command
-                cpu.GTE.execute(instruction.FullValue);
+            if (instruction.Value >> 25 == 0b0100101) {    //COP2 imm25 command
+                cpu.GTE.execute(instruction.Value);
                 return;
             }
 
             //GTE registers reads/writes have delay of 1 (?) instruction
 
-            switch (instruction.Get_rs()) {
+            switch (instruction.Rs) {
                 
                 case 0b00000:   //MFC                
-                    cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();
-                    cpu.DelayedRegisterLoad.Value = cpu.GTE.read(instruction.Get_rd());
+                    cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;
+                    cpu.DelayedRegisterLoad.Value = cpu.GTE.read(instruction.Rd);
                     break;
 
                 case 0b00010:   //CFC
-                    cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();
-                    cpu.DelayedRegisterLoad.Value = cpu.GTE.read(instruction.Get_rd() + 32);
+                    cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;
+                    cpu.DelayedRegisterLoad.Value = cpu.GTE.read(instruction.Rd + 32);
                     break;
 
                 case 0b00110:  //CTC 
-                    uint rd = instruction.Get_rd();
-                    uint value = cpu.GPR[instruction.Get_rt()];
+                    uint rd = instruction.Rd;
+                    uint value = cpu.GPR[instruction.Rt];
                     cpu.GTE.write(rd + 32, value);
                     break;
 
                 case 0b00100:  //MTC 
-                    rd = instruction.Get_rd();
-                    value = cpu.GPR[instruction.Get_rt()];
+                    rd = instruction.Rd;
+                    value = cpu.GPR[instruction.Rt];
                     cpu.GTE.write(rd, value);   //Same as CTC but without adding 32 to the position
                     break;
 
-                default:  throw new Exception("Unhandled GTE opcode: " + instruction.Get_rs().ToString("X"));
+                default:  throw new Exception("Unhandled GTE opcode: " + instruction.Rs.ToString("X"));
             }
         }
 
@@ -578,21 +578,21 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void xori(CPU_Interpreter cpu, Instruction instruction) {
-            uint imm = instruction.GetImmediate();
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rt();         //Position
-            cpu.DirectWrite.Value = cpu.GPR[instruction.Get_rs()] ^ imm;  //Value
+            uint imm = instruction.Imm;
+            cpu.DirectWrite.RegisterNumber = instruction.Rt;         //Position
+            cpu.DirectWrite.Value = cpu.GPR[instruction.Rs] ^ imm;  //Value
         }
 
         private static void lh(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             uint final_address = cpu.GPR[base_] + addressRegPos;
                
             //aligned?
             short halfWord = (short)cpu.BUS.LoadHalf(final_address);
             if ((final_address & 0x1) == 0) {
-                cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();         //Position
+                cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;            //Position
                 cpu.DelayedRegisterLoad.Value = (uint)halfWord;                     //Value
             } else {
                 Exception(cpu, (uint)CPU.Exceptions.LoadAddressError);
@@ -602,13 +602,13 @@ namespace PSXSharp.Core.Interpreter {
         private static void lhu(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
 
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
             if ((final_address & 0x1) == 0) {
                 uint halfWord = cpu.BUS.LoadHalf(final_address);
-                cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();  //Position
+                cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;        //Position
                 cpu.DelayedRegisterLoad.Value = halfWord;                       //Value
                
             }
@@ -618,9 +618,9 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void sltiu(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rt();
+            cpu.DirectWrite.RegisterNumber = instruction.Rt;
 
-            if (cpu.GPR[instruction.Get_rs()] < instruction.GetSignedImmediate()) {
+            if (cpu.GPR[instruction.Rs] < instruction.SignedImm) {
                 cpu.DirectWrite.Value = 1;
             } else {
                 cpu.DirectWrite.Value = 0;
@@ -628,12 +628,12 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void sub(CPU_Interpreter cpu, Instruction instruction) {
-            int reg1 = (int)cpu.GPR[instruction.Get_rs()];
-            int reg2 = (int)cpu.GPR[instruction.Get_rt()];
+            int reg1 = (int)cpu.GPR[instruction.Rs];
+            int reg2 = (int)cpu.GPR[instruction.Rt];
 
             try {
                 int value = checked(reg1 - reg2);        //Check for signed integer overflow 
-                cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
+                cpu.DirectWrite.RegisterNumber = instruction.Rd;
                 cpu.DirectWrite.Value = (uint)value;
             }
             catch (OverflowException) {
@@ -642,8 +642,8 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void mult(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
 
             //Sign extend
             long a =  (int)cpu.GPR[rs];
@@ -660,13 +660,13 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void xor(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            cpu.DirectWrite.Value = cpu.GPR[instruction.Get_rs()] ^ cpu.GPR[instruction.Get_rt()];
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            cpu.DirectWrite.Value = cpu.GPR[instruction.Rs] ^ cpu.GPR[instruction.Rt];
         }
 
         private static void multu(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
 
             ulong a = cpu.GPR[rs];
             ulong b = cpu.GPR[rt];
@@ -678,18 +678,18 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void srlv(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
 
             cpu.DirectWrite.RegisterNumber = rd;
             cpu.DirectWrite.Value = cpu.GPR[rt] >> (int)(cpu.GPR[rs] & 0x1f);
         }
 
         private static void srav(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
 
             int value = (int)cpu.GPR[rt] >> (int)(cpu.GPR[rs] & 0x1f);
             cpu.DirectWrite.RegisterNumber = rd;
@@ -697,26 +697,26 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void nor(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            cpu.DirectWrite.Value = ~(cpu.GPR[instruction.Get_rs()] | cpu.GPR[instruction.Get_rt()]);
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            cpu.DirectWrite.Value = ~(cpu.GPR[instruction.Rs] | cpu.GPR[instruction.Rt]);
         }
 
         private static void sllv(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
 
             cpu.DirectWrite.RegisterNumber = rd;             //Take 5 bits from register rs
             cpu.DirectWrite.Value = cpu.GPR[rt] << (int)(cpu.GPR[rs] & 0x1f);
         }
 
         private static void mthi(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
             cpu.HI = cpu.GPR[rs];
         }
 
         private static void mtlo(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
             cpu.LO = cpu.GPR[rs];
         }
 
@@ -765,8 +765,8 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void slt(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            if ((int)cpu.GPR[instruction.Get_rs()] < (int)cpu.GPR[instruction.Get_rt()]) {
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            if ((int)cpu.GPR[instruction.Rs] < (int)cpu.GPR[instruction.Rt]) {
                 cpu.DirectWrite.Value = 1;
             }
             else {
@@ -775,8 +775,8 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void divu(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
 
             uint numerator = cpu.GPR[rs];
             uint denominator = cpu.GPR[rt];
@@ -794,9 +794,9 @@ namespace PSXSharp.Core.Interpreter {
 
         private static void srl(CPU_Interpreter cpu, Instruction instruction) {
             //Right Shift (Logical)
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
-            uint sa = instruction.Get_sa();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
+            uint sa = instruction.Sa;
 
             uint val = cpu.GPR[rt];
             cpu.DirectWrite.RegisterNumber = rd;
@@ -804,20 +804,20 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void mflo(CPU_Interpreter cpu, Instruction instruction) { //LO -> GPR[rd]
-            uint rd = instruction.Get_rd();
+            uint rd = instruction.Rd;
             cpu.DirectWrite.RegisterNumber = rd;
             cpu.DirectWrite.Value = cpu.LO;
         }
 
         private static void mfhi(CPU_Interpreter cpu, Instruction instruction) {        //HI -> GPR[rd]
-            uint rd = instruction.Get_rd();
+            uint rd = instruction.Rd;
             cpu.DirectWrite.RegisterNumber = rd;
             cpu.DirectWrite.Value = cpu.HI;
         }
 
         private static void div(CPU_Interpreter cpu, Instruction instruction) { // GPR[rs] / GPR[rt] -> (HI, LO) 
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
 
             int numerator = (int)cpu.GPR[rs];
             int denominator = (int)cpu.GPR[rt];
@@ -844,9 +844,9 @@ namespace PSXSharp.Core.Interpreter {
 
         private static void sra(CPU_Interpreter cpu, Instruction instruction) {
             //Right Shift (Arithmetic)
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
-            uint sa = instruction.Get_sa();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
+            uint sa = instruction.Sa;
 
             int val = (int)cpu.GPR[rt];
             cpu.DirectWrite.RegisterNumber = rd;
@@ -854,9 +854,9 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void slti(CPU_Interpreter cpu, Instruction instruction) {
-            int si = (int)instruction.GetSignedImmediate();
-            int rg = (int)cpu.GPR[instruction.Get_rs()];
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rt();
+            int si = (int)instruction.SignedImm;
+            int rg = (int)cpu.GPR[instruction.Rs];
+            cpu.DirectWrite.RegisterNumber = instruction.Rt;
 
             if (rg<si) {
                 cpu.DirectWrite.Value = 1;
@@ -866,20 +866,20 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void bxx(CPU_Interpreter cpu,Instruction instruction) {      
-            bool bgez = (instruction.FullValue >> 16 & 1) == 1;
-            bool link = (instruction.FullValue >> 17 & 0xF) == 0x8;
+            bool bgez = (instruction.Value >> 16 & 1) == 1;
+            bool link = (instruction.Value >> 17 & 0xF) == 0x8;
             uint linkAddress = cpu.Next_PC;             //Save Next_PC before a branch overwrites it
 
             //if rs is $ra, then the value used for the comparison is $ra's value before linking.
             if (bgez) {
                 //BGEZ
-                if ((int)cpu.GPR[instruction.Get_rs()] >= 0) {
-                    branch(cpu,instruction.GetSignedImmediate());
+                if ((int)cpu.GPR[instruction.Rs] >= 0) {
+                    branch(cpu,instruction.SignedImm);
                 }
             } else {
                 //BLTZ
-                if ((int)cpu.GPR[instruction.Get_rs()] < 0) {
-                    branch(cpu,instruction.GetSignedImmediate());
+                if ((int)cpu.GPR[instruction.Rs] < 0) {
+                    branch(cpu,instruction.SignedImm);
                 }
             }
 
@@ -892,42 +892,42 @@ namespace PSXSharp.Core.Interpreter {
 
         private static void lbu(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
 
             byte byte_ = cpu.BUS.LoadByte(cpu.GPR[base_] + addressRegPos);
-            cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();  //Position
+            cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;  //Position
             cpu.DelayedRegisterLoad.Value = byte_;                     //Value        
         }
 
         private static void blez(CPU_Interpreter cpu, Instruction instruction) {
-            int signedValue = (int)cpu.GPR[instruction.Get_rs()];
+            int signedValue = (int)cpu.GPR[instruction.Rs];
             if (signedValue <= 0) {
-                branch(cpu,instruction.GetSignedImmediate());
+                branch(cpu,instruction.SignedImm);
             }
         }
 
         private static void bgtz(CPU_Interpreter cpu, Instruction instruction) {     //Branch if > 0
-            int signedValue = (int)cpu.GPR[instruction.Get_rs()];      
+            int signedValue = (int)cpu.GPR[instruction.Rs];      
             if (signedValue > 0) {
-                branch(cpu,instruction.GetSignedImmediate());
+                branch(cpu,instruction.SignedImm);
             }
         }
 
         private static void subu(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            cpu.DirectWrite.Value = cpu.GPR[instruction.Get_rs()] - cpu.GPR[instruction.Get_rt()];
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            cpu.DirectWrite.Value = cpu.GPR[instruction.Rs] - cpu.GPR[instruction.Rt];
         }
 
         private static void jalr(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rd = instruction.Rd;
 
             // Store return address in $rd
             cpu.DirectWrite.RegisterNumber = rd;
             cpu.DirectWrite.Value = cpu.Next_PC;
 
-            if ((cpu.GPR[instruction.Get_rs()] & 0x3) != 0) {
+            if ((cpu.GPR[instruction.Rs] & 0x3) != 0) {
                 Exception(cpu, (uint)CPU.Exceptions.LoadAddressError);
                 return;
             }
@@ -937,33 +937,33 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void beq(CPU_Interpreter cpu, Instruction instruction) {
-            if (cpu.GPR[instruction.Get_rs()].Equals(cpu.GPR[instruction.Get_rt()])) {
-                branch(cpu,instruction.GetSignedImmediate());
+            if (cpu.GPR[instruction.Rs].Equals(cpu.GPR[instruction.Rt])) {
+                branch(cpu,instruction.SignedImm);
             }
         }
 
         private static void lb(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             sbyte sb = (sbyte)cpu.BUS.LoadByte(cpu.GPR[base_] + addressRegPos);
-            cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();  //Position
-            cpu.DelayedRegisterLoad.Value = (uint)sb;                     //Value
+            cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;        //Position
+            cpu.DelayedRegisterLoad.Value = (uint)sb;                       //Value
         }
 
         private static void sb(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
 
-            uint targetReg = instruction.Get_rt();
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint targetReg = instruction.Rt;
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             cpu.BUS.StoreByte(cpu.GPR[base_] + addressRegPos, (byte)cpu.GPR[targetReg]);
         }
 
         private static void andi(CPU_Interpreter cpu,Instruction instruction) {
-            uint targetReg = instruction.Get_rt();
-            uint imm = instruction.GetImmediate();
-            uint rs = instruction.Get_rs();
+            uint targetReg = instruction.Rt;
+            uint imm = instruction.Imm;
+            uint rs = instruction.Rs;
             cpu.DirectWrite.RegisterNumber = targetReg;
             cpu.DirectWrite.Value = cpu.GPR[rs] & imm;
         }
@@ -971,17 +971,17 @@ namespace PSXSharp.Core.Interpreter {
         private static void jal(CPU_Interpreter cpu, Instruction instruction) {
             cpu.DirectWrite.RegisterNumber = (uint)CPU.Register.ra;
             cpu.DirectWrite.Value = cpu.Next_PC;             //Jump and link, store the PC to return to it later
-            cpu.Next_PC = cpu.Next_PC & 0xf0000000 | instruction.GetImmediateJumpAddress() << 2;
+            cpu.Next_PC = cpu.Next_PC & 0xf0000000 | instruction.JumpImm << 2;
             cpu.Branch = true;
         }
 
         private static void sh(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
 
-            uint targetReg = instruction.Get_rt();
+            uint targetReg = instruction.Rt;
 
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
             //Address must be 16 bit aligned
@@ -994,11 +994,11 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void addi(CPU_Interpreter cpu, Instruction instruction) {
-            int imm = (int)instruction.GetSignedImmediate();
-            int s = (int)cpu.GPR[instruction.Get_rs()];
+            int imm = (int)instruction.SignedImm;
+            int s = (int)cpu.GPR[instruction.Rs];
              try {
                  int value = checked(imm + s);        //Check for signed integer overflow 
-                 cpu.DirectWrite.RegisterNumber = instruction.Get_rt();
+                 cpu.DirectWrite.RegisterNumber = instruction.Rt;
                  cpu.DirectWrite.Value = (uint)value;
              }
              catch (OverflowException) {
@@ -1007,35 +1007,35 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         public static void lui(CPU_Interpreter cpu, Instruction instruction) {            
-            uint value = instruction.GetImmediate();
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rt();
+            uint value = instruction.Imm;
+            cpu.DirectWrite.RegisterNumber = instruction.Rt;
             cpu.DirectWrite.Value = value << 16;
         }
 
         public static void ori(CPU_Interpreter cpu, Instruction instruction) {
-            uint value = instruction.GetImmediate();
-            uint rs = instruction.Get_rs();
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rt();
+            uint value = instruction.Imm;
+            uint rs = instruction.Rs;
+            cpu.DirectWrite.RegisterNumber = instruction.Rt;
             cpu.DirectWrite.Value = cpu.GPR[rs] | value;
         }
 
         public static void or(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            cpu.DirectWrite.Value = cpu.GPR[instruction.Get_rs()] | cpu.GPR[instruction.Get_rt()];
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            cpu.DirectWrite.Value = cpu.GPR[instruction.Rs] | cpu.GPR[instruction.Rt];
         }
 
         private static void and(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            cpu.DirectWrite.Value = cpu.GPR[instruction.Get_rs()] & cpu.GPR[instruction.Get_rt()];
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            cpu.DirectWrite.Value = cpu.GPR[instruction.Rs] & cpu.GPR[instruction.Rt];
         }
 
         public static void sw(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
 
-            uint targetReg = instruction.Get_rt();
+            uint targetReg = instruction.Rt;
 
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
             //Address must be 32 bit aligned
@@ -1050,13 +1050,13 @@ namespace PSXSharp.Core.Interpreter {
         public static void lw(CPU_Interpreter cpu, Instruction instruction) {
             if (cpu.IscIsolateCache) { return; }
 
-            uint addressRegPos = instruction.GetSignedImmediate();
-            uint base_ = instruction.Get_rs();
+            uint addressRegPos = instruction.SignedImm;
+            uint base_ = instruction.Rs;
             uint final_address = cpu.GPR[base_] + addressRegPos;
        
             //Address must be 32 bit aligned
             if ((final_address & 0x3) == 0) {
-                 cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();              //Position
+                 cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;              //Position
                  cpu.DelayedRegisterLoad.Value = cpu.BUS.LoadWord(final_address);           //Value
             }
             else {
@@ -1065,11 +1065,11 @@ namespace PSXSharp.Core.Interpreter {
         }
         
         private static void add(CPU_Interpreter cpu, Instruction instruction) {
-            int reg1 = (int)cpu.GPR[instruction.Get_rs()];       
-            int reg2 = (int)cpu.GPR[instruction.Get_rt()];
+            int reg1 = (int)cpu.GPR[instruction.Rs];       
+            int reg2 = (int)cpu.GPR[instruction.Rt];
             try {
                 int value = checked(reg1 + reg2);        //Check for signed integer overflow, can be ignored as no games rely on this 
-                cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
+                cpu.DirectWrite.RegisterNumber = instruction.Rd;
                 cpu.DirectWrite.Value = (uint)value;
             }
             catch (OverflowException) {
@@ -1078,7 +1078,7 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void jr(CPU_Interpreter cpu, Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
 
             cpu.Next_PC = cpu.GPR[rs];      //Return or Jump to address in register 
             if ((cpu.Next_PC & 0x3) != 0) {
@@ -1088,13 +1088,13 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         private static void addu(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            cpu.DirectWrite.Value = cpu.GPR[instruction.Get_rs()] + cpu.GPR[instruction.Get_rt()];
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            cpu.DirectWrite.Value = cpu.GPR[instruction.Rs] + cpu.GPR[instruction.Rt];
         }
 
         private static void sltu(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rd();
-            if (cpu.GPR[instruction.Get_rs()] < cpu.GPR[instruction.Get_rt()]) {
+            cpu.DirectWrite.RegisterNumber = instruction.Rd;
+            if (cpu.GPR[instruction.Rs] < cpu.GPR[instruction.Rt]) {
                 cpu.DirectWrite.Value = 1;
             }
             else {
@@ -1103,27 +1103,27 @@ namespace PSXSharp.Core.Interpreter {
         }
 
         public static void sll(CPU_Interpreter cpu,Instruction instruction) {
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
-            uint sa = instruction.Get_sa();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
+            uint sa = instruction.Sa;
 
             cpu.DirectWrite.RegisterNumber = rd;
             cpu.DirectWrite.Value = cpu.GPR[rt] << (int)sa;
         }
 
         private static void addiu(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.DirectWrite.RegisterNumber = instruction.Get_rt();
-            cpu.DirectWrite.Value = cpu.GPR[instruction.Get_rs()] + instruction.GetSignedImmediate();
+            cpu.DirectWrite.RegisterNumber = instruction.Rt;
+            cpu.DirectWrite.Value = cpu.GPR[instruction.Rs] + instruction.SignedImm;
         }
 
         private static void jump(CPU_Interpreter cpu, Instruction instruction) {
-            cpu.Next_PC = cpu.Next_PC & 0xf0000000 | instruction.GetImmediateJumpAddress() << 2;
+            cpu.Next_PC = cpu.Next_PC & 0xf0000000 | instruction.JumpImm << 2;
             cpu.Branch = true;
         }
 
         private static void rfe(CPU_Interpreter cpu, Instruction instruction) {
-            if (instruction.Get_Subfunction() != 0b010000) {    //Check bits [5:0]
-                throw new Exception("Invalid cop0 instruction: " + instruction.FullValue.ToString("X"));
+            if (instruction.Sub != 0b010000) {    //Check bits [5:0]
+                throw new Exception("Invalid cop0 instruction: " + instruction.Value.ToString("X"));
             }
                          /*
                         uint mode = cpu.SR & 0x3f;                   
@@ -1137,47 +1137,47 @@ namespace PSXSharp.Core.Interpreter {
 
         private static void mfc0(CPU_Interpreter cpu, Instruction instruction) {
             //MFC has load delay
-            cpu.DelayedRegisterLoad.RegisterNumber = instruction.Get_rt();
+            cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;
 
-            switch (instruction.Get_rd()) {
+            switch (instruction.Rd) {
                 case 12: cpu.DelayedRegisterLoad.Value = cpu.Cop0.SR; break;
                 case 13: cpu.DelayedRegisterLoad.Value = cpu.Cop0.Cause; break;
                 case 14: cpu.DelayedRegisterLoad.Value = cpu.Cop0.EPC; break;
                 case 15: cpu.DelayedRegisterLoad.Value = 0x00000002; break;     //COP0 R15 (PRID)
-                default: cpu.DelayedRegisterLoad.RegisterNumber = 0; Console.WriteLine("Unhandled cop0 Register Read: " + instruction.Get_rd()); break;
+                default: cpu.DelayedRegisterLoad.RegisterNumber = 0; Console.WriteLine("Unhandled cop0 Register Read: " + instruction.Rd); break;
             }
         }
 
         private static void mtc0(CPU_Interpreter cpu, Instruction instruction) {
 
-            switch (instruction.Get_rd()) {
+            switch (instruction.Rd) {
                 case 3:
                 case 5:                          //Breakpoints registers
                 case 6:
                 case 7:
                 case 9:
                 case 11:
-                    if (cpu.GPR[instruction.Get_rt()] != 0) {
+                    if (cpu.GPR[instruction.Rt] != 0) {
                         //throw new Exception("Unhandled write to cop0 register: " + instruction.Get_rd());
                     }
                     break;
 
-                case 12: cpu.Cop0.SR = cpu.GPR[instruction.Get_rt()]; break;         //Setting the status register's 16th bit
+                case 12: cpu.Cop0.SR = cpu.GPR[instruction.Rt]; break;         //Setting the status register's 16th bit
 
                 case 13:
                     //cause register, mostly read-only data describing the
                     //cause of an exception. Apparently only bits[9:8] are writable
-                    if (cpu.GPR[instruction.Get_rt()] != 0) { 
+                    if (cpu.GPR[instruction.Rt] != 0) { 
                         //throw new Exception("Unhandled write to CAUSE register: " + instruction.get_rd());
                     }
                     break;
 
-                default: throw new Exception("Unhandled cop0 register: " + instruction.Get_rd());
+                default: throw new Exception("Unhandled cop0 register: " + instruction.Rd);
             }
         }
         private static void bne(CPU_Interpreter cpu, Instruction instruction) {
-            if (!cpu.GPR[instruction.Get_rs()].Equals(cpu.GPR[instruction.Get_rt()])) {
-                branch(cpu,instruction.GetSignedImmediate());
+            if (!cpu.GPR[instruction.Rs].Equals(cpu.GPR[instruction.Rt])) {
+                branch(cpu,instruction.SignedImm);
             }
         }
 

@@ -39,12 +39,12 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] special(Instruction instruction) {
-            return SpecialLookUpTable[instruction.Get_Subfunction()](instruction);
+            return SpecialLookUpTable[instruction.Sub](instruction);
         }
 
         private static uint[] bxx(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            bool link = (instruction.FullValue >> 17 & 0xF) == 0x8;
+            uint rs = instruction.Rs;
+            bool link = (instruction.Value >> 17 & 0xF) == 0x8;
             return [(uint)(link? 31:0), rs];
         }
 
@@ -57,78 +57,78 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] beq(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] bne(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] blez(Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
             return [0, rs];
         }
 
         private static uint[] bgtz(Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
             return [0, rs];
         }
 
         private static uint[] addi(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] addiu(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] slti(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] sltiu(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] andi(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] ori(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] xori(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] lui(Instruction instruction) {
-            uint rt = instruction.Get_rt();
+            uint rt = instruction.Rt;
             return [rt];
         }
 
         private static uint[] cop0(Instruction instruction) {
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
 
             //Ensure that the first index is the GPR write target
             //If the read/write target is in COP0 we replace it with 0
@@ -143,7 +143,7 @@ namespace PSXSharp.Core {
                 case 0b10000:   // RFE
                     return [0];
                 default:
-                    throw new Exception("Unhandled cop0 instruction: " + instruction.FullValue.ToString("X"));
+                    throw new Exception("Unhandled cop0 instruction: " + instruction.Value.ToString("X"));
             }
         }
 
@@ -152,13 +152,13 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] cop2(Instruction instruction) {
-            if (instruction.FullValue >> 25 == 0b0100101) {
+            if (instruction.Value >> 25 == 0b0100101) {
                 return [0];
             }
 
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
 
             //Ensure that the first index is the GPR write target
             //If the read/write target is in COP2 we replace it with 0
@@ -172,7 +172,7 @@ namespace PSXSharp.Core {
                 case 0b00100:   // MTC2
                     return [0, rt];
                 default:
-                    throw new Exception("Unhandled GTE opcode: " + instruction.Get_rs().ToString("X"));
+                    throw new Exception("Unhandled GTE opcode: " + instruction.Rs.ToString("X"));
             }
         }
 
@@ -181,74 +181,74 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] lb(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] lh(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] lw(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] lbu(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] lhu(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] sb(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] sh(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] sw(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] swl(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] swr(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] lwl(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
         private static uint[] lwr(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rt, rs];
         }
 
@@ -261,8 +261,8 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] lwc2(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rs];
         }
 
@@ -279,8 +279,8 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] swc2(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rs];
         }
 
@@ -289,52 +289,52 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] sll(Instruction instruction) {
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
             return [rd, rt];
         }
 
         private static uint[] srl(Instruction instruction) {
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
             return [rd, rt];
         }
 
         private static uint[] sra(Instruction instruction) {
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
             return [rd, rt];
         }
 
         private static uint[] sllv(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
             return [rd, rt, rs];
         }
 
         private static uint[] srlv(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
             return [rd, rt, rs];
         }
 
         private static uint[] srav(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
+            uint rd = instruction.Rd;
             return [rd, rt, rs];
         }
 
         private static uint[] jr(Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
             return [0, rs];
         }
 
         private static uint[] jalr(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rd = instruction.Get_rd();
+            uint rs = instruction.Rs;
+            uint rd = instruction.Rd;
             return [rd, rs];
         }
 
@@ -347,116 +347,116 @@ namespace PSXSharp.Core {
         }
 
         private static uint[] mfhi(Instruction instruction) {
-            uint rd = instruction.Get_rd();
+            uint rd = instruction.Rd;
             return [rd];
         }
 
         private static uint[] mthi(Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
             return [0, rs];
         }
 
         private static uint[] mflo(Instruction instruction) {
-            uint rd = instruction.Get_rd();
+            uint rd = instruction.Rd;
             return [rd];
         }
 
         private static uint[] mtlo(Instruction instruction) {
-            uint rs = instruction.Get_rs();
+            uint rs = instruction.Rs;
             return [0, rs];
         }
 
         private static uint[] mult(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] multu(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] div(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] divu(Instruction instruction) {
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [0, rt, rs];
         }
 
         private static uint[] add(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] addu(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] subu(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] sub(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] or(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] and(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] xor(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] nor(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] slt(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
 
         private static uint[] sltu(Instruction instruction) {
-            uint rd = instruction.Get_rd();
-            uint rs = instruction.Get_rs();
-            uint rt = instruction.Get_rt();
+            uint rd = instruction.Rd;
+            uint rs = instruction.Rs;
+            uint rt = instruction.Rt;
             return [rd, rt, rs];
         }
     }

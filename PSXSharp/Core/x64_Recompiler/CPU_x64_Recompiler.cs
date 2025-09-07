@@ -245,7 +245,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             }
 
             for (;;) {
-                instruction.FullValue = instructionsSpan[instructionIndex++];
+                instruction.Value = instructionsSpan[instructionIndex++];
                 bool syscallOrBreak = IsSyscallOrBreak(instruction);
 
                 if (loadDelayCounter <= 0) {
@@ -282,8 +282,8 @@ namespace PSXSharp.Core.x64_Recompiler {
             x64_JIT.EmitBranchDelayHandler(emitter);
 
             //Emit the actual instruction (we don't emit NOPs)
-            if (instruction.FullValue != 0) {
-                x64_LUT.MainLookUpTable[instruction.GetOpcode()](instruction, emitter);
+            if (instruction.Value != 0) {
+                x64_LUT.MainLookUpTable[instruction.Op](instruction, emitter);
             }
 
             if (x64_JIT.EnableLoadDelaySlot) {
@@ -292,7 +292,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             } else {
                 if (x64_JIT.IsFirstInstruction) {
                     //Handle possible delayed load from previous block
-                    Span<uint> regs = Register_LUT.MainLookUpTable[instruction.GetOpcode()](instruction);
+                    Span<uint> regs = Register_LUT.MainLookUpTable[instruction.Op](instruction);
                     x64_JIT.MaybeCancelLoadDelay(emitter, (int)regs[0]);
                     x64_JIT.IsFirstInstruction = false;
                 }
@@ -328,9 +328,9 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static bool IsJumpOrBranch(Instruction instruction) {
-            uint op = instruction.GetOpcode();
+            uint op = instruction.Op;
             if (op == 0) {
-                uint sub = instruction.Get_Subfunction();
+                uint sub = instruction.Sub;
                 return sub == 0x8 || sub == 0x9;     //JR, JALR,
             } else {
                 return op >= 1 && op <= 7;            //BXX, J, JAL, BEQ, BNE, BLEZ, BGTZ 
@@ -338,21 +338,21 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         private static bool IsSyscallOrBreak(Instruction instruction) {
-            uint op = instruction.GetOpcode();
+            uint op = instruction.Op;
             if (op == 0) {
-                uint sub = instruction.Get_Subfunction();
+                uint sub = instruction.Sub;
                 return sub == 0xC || sub == 0xD;     //Syscall, Break
             }
             return false;
         }
 
         private static bool IsAnyLoad(Instruction instruction) {
-            return (instruction.GetOpcode() >= 0x20 && instruction.GetOpcode() <= 0x26) || IsCOPLoad(instruction);
+            return (instruction.Op >= 0x20 && instruction.Op <= 0x26) || IsCOPLoad(instruction);
         }
     
         private static bool IsCOPLoad(Instruction instruction) {
-            return (instruction.GetOpcode() == 0x10 && (instruction.Get_rs() == 0)) ||                              //MFC0
-                (instruction.GetOpcode() == 0x12 && (instruction.Get_rs() == 0 || instruction.Get_rs() == 2));      //MFC2/CFC2
+            return (instruction.Op == 0x10 && (instruction.Rs == 0)) ||                              //MFC0
+                (instruction.Op == 0x12 && (instruction.Rs == 0 || instruction.Rs == 2));           //MFC2/CFC2
         }
 
         private static bool HasReadDependancy(Span<uint> loadInstructionRegs, Span<uint> nextInstructionRegs) {
@@ -377,16 +377,16 @@ namespace PSXSharp.Core.x64_Recompiler {
             }
 
             Instruction nextInstruction = new Instruction {
-                FullValue = instructions[index]
+                Value = instructions[index]
             };
 
             Instruction nextNextInstruction = new Instruction {
-                FullValue = instructions[index + 1]
+                Value = instructions[index + 1]
             };
 
-            Span<uint> regsOfCurrentInstruction = Register_LUT.MainLookUpTable[instruction.GetOpcode()](instruction);
-            Span<uint> regsOfNextInstruction = Register_LUT.MainLookUpTable[nextInstruction.GetOpcode()](nextInstruction);
-            Span<uint> regsOfNextNextInstruction = Register_LUT.MainLookUpTable[nextNextInstruction.GetOpcode()](nextNextInstruction);
+            Span<uint> regsOfCurrentInstruction = Register_LUT.MainLookUpTable[instruction.Op](instruction);
+            Span<uint> regsOfNextInstruction = Register_LUT.MainLookUpTable[nextInstruction.Op](nextInstruction);
+            Span<uint> regsOfNextNextInstruction = Register_LUT.MainLookUpTable[nextNextInstruction.Op](nextNextInstruction);
 
             if (regsOfCurrentInstruction[0] == 0) {
                 return 0;
