@@ -95,6 +95,20 @@ namespace PSXSharp.Core.x64_Recompiler {
             }
         }
 
+        private static void EmitRegisterWrite(Assembler asm, int dstNumber, uint imm) {
+            if (EnableLoadDelaySlot) {
+                int regNumber_Offset = DirectWrite_number;
+                int regValue_Offset = DirectWrite_value;
+                asm.mov(__dword_ptr[rbx + regNumber_Offset], dstNumber);
+                asm.mov(__dword_ptr[rbx + regValue_Offset], imm);
+            } else {
+                int destOffset = GPR_Offset + (dstNumber * 4);
+                if (destOffset != 0) {
+                    asm.mov(__dword_ptr[rbx + destOffset], imm);
+                }            
+            }
+        }
+
         public static void MaybeCancelLoadDelay(Assembler asm, int target) {
             //This is a combination of runtime and compile time check after the first instruction
             //that handles a possible delayed load from the last instruction in the previous block
@@ -292,14 +306,21 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public static void EmitArithmetic_i(int rs, int rt, uint imm, int type, Assembler asm) {
             //This should check for signed overflow, but it can be ignored as no games rely on this 
-            EmitRegisterRead(asm, eax, rs);
 
-            switch (type) {
-                case ArithmeticSignals.ADD: asm.add(eax, imm); break;
-                case ArithmeticSignals.SUB: asm.sub(eax, imm); break;
-                default: throw new Exception("JIT: Unknown Arithmetic_i : " + type);
+            if (type == ArithmeticSignals.SUB) {
+                //subi/subiu are pseudo-instructions, and are done using addi/addiu -- we shouldn't get this here
+                Console.WriteLine("Got subi/subiu pseudo-instructions!");
+                throw new UnreachableException();
             }
 
+            //If rs is $0 then this is a simple move instruction
+            if (rs == 0) {
+                EmitRegisterWrite(asm, rt, imm);
+                return;
+            }
+
+            EmitRegisterRead(asm, eax, rs);
+            asm.add(eax, imm);
             EmitRegisterWrite(asm, rt, eax, false);
         }
 
@@ -485,18 +506,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitLUI(int rt, uint imm, Assembler asm) {
-            if (EnableLoadDelaySlot) {
-                asm.mov(__dword_ptr[rbx + DirectWrite_number], rt);
-                asm.mov(__dword_ptr[rbx + DirectWrite_value], imm << 16);
-            } else {
-                int destOffset = GPR_Offset + (rt * 4);
-                if (rt != 0) {
-                    asm.mov(__dword_ptr[rbx + destOffset], imm << 16);
-                }
-            }
-
-            // asm.mov(__dword_ptr[rbx + DirectWrite_number], rt);
-            // asm.mov(__dword_ptr[rbx + DirectWrite_value], imm << 16);
+            EmitRegisterWrite(asm, rt, imm << 16);
         }
 
         public static void EmitMTC0(int rt, int rd, Assembler asm) {
