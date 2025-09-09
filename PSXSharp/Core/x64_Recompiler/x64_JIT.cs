@@ -313,7 +313,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 throw new UnreachableException();
             }
 
-            //If rs is $0 then this is a simple move instruction
+            //If rs is $0 then this is a simple move instruction, we can write the value directly
             if (rs == 0) {
                 EmitRegisterWrite(asm, rt, imm);
                 return;
@@ -354,7 +354,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 EmitRegisterWrite(asm, rt, eax, false);
 
             } else {
-                //If rs == 0 then the result we can pre calculate the result
+                //If rs == 0 then we can pre calculate the result and write it directly
                 switch (type) {
                     case LogicSignals.AND:              //Anything ANDed with 0 = 0
                         EmitRegisterWrite(asm, rt, 0);
