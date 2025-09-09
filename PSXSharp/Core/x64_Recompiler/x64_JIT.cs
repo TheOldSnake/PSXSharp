@@ -339,18 +339,36 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitLogic_i(int rs, int rt, uint imm, int type, Assembler asm) {
-            EmitRegisterRead(asm, eax, rs);
+            if (rs != 0) {
+                EmitRegisterRead(asm, eax, rs);
 
-            //Emit the required op
-            switch (type) {
-                case LogicSignals.AND: asm.and(eax, imm); break;
-                case LogicSignals.OR: asm.or(eax, imm); break;
-                case LogicSignals.XOR: asm.xor(eax, imm); break;
-                //There is no NORI instruction
-                default: throw new Exception("JIT: Unknown Logic_i : " + type);
+                //Emit the required op
+                switch (type) {
+                    case LogicSignals.AND: asm.and(eax, imm); break;
+                    case LogicSignals.OR: asm.or(eax, imm); break;
+                    case LogicSignals.XOR: asm.xor(eax, imm); break;
+                    //There is no NORI instruction
+                    default: throw new Exception("JIT: Unknown Logic_i : " + type);
+                }
+
+                EmitRegisterWrite(asm, rt, eax, false);
+
+            } else {
+                //If rs == 0 then the result we can pre calculate the result
+                switch (type) {
+                    case LogicSignals.AND:              //Anything ANDed with 0 = 0
+                        EmitRegisterWrite(asm, rt, 0);
+                        break;
+
+                    case LogicSignals.OR:              //Anything ORed/XORed with 0 doesn't change
+                    case LogicSignals.XOR: 
+                        EmitRegisterWrite(asm, rt, imm); 
+                        break;
+
+                    //There is no NORI instruction
+                    default: throw new Exception("JIT: Unknown Logic_i : " + type);
+                }
             }
-
-            EmitRegisterWrite(asm, rt, eax, false);
         }
 
         public static void EmitLogic(int rs, int rt, int rd, int type, Assembler asm) {
