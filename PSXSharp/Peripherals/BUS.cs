@@ -76,7 +76,7 @@ namespace PSXSharp {
             if (debug) Console.WriteLine("read32: " + address.ToString("X"));
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadWord(physicalAddress);
+                case uint when RAM.Range.Contains(physicalAddress):  return RAM.Read<uint>(physicalAddress);
                 case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadWord(physicalAddress);
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): return IRQ_CONTROL.Read(physicalAddress);
                 case uint when DMA.range.Contains(physicalAddress): return DMA.ReadWord(physicalAddress);
@@ -106,7 +106,7 @@ namespace PSXSharp {
             if (debug) Console.WriteLine("write32: " + address.ToString("X"));
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): RAM.StoreWord(physicalAddress, value); break;
+                case uint when RAM.Range.Contains(physicalAddress): RAM.Write<uint>(physicalAddress, value); break;
                 case uint when RamSize.range.Contains(physicalAddress): RamSize.StoreWord(value); break;
                 case uint when MemoryControl.range.Contains(physicalAddress): MemoryControl.Write(physicalAddress, value); break;
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): IRQ_CONTROL.Write(physicalAddress, (ushort)value); break; //Cast? could be wrong
@@ -143,7 +143,7 @@ namespace PSXSharp {
             if(debug) Console.WriteLine("read16: " + address.ToString("X"));
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): return RAM.LoadHalf(physicalAddress);
+                case uint when RAM.Range.Contains(physicalAddress): return RAM.Read<ushort>(physicalAddress);
                 case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadHalf(physicalAddress);
                 case uint when SPU.range.Contains(physicalAddress): return SPU.LoadHalf(physicalAddress);
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): return (ushort)IRQ_CONTROL.Read(physicalAddress);
@@ -171,7 +171,7 @@ namespace PSXSharp {
             if (debug) Console.WriteLine("write16: " + address.ToString("X"));
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): RAM.StoreHalf(physicalAddress, value); break;
+                case uint when RAM.Range.Contains(physicalAddress): RAM.Write<ushort>(physicalAddress, value); break;
                 case uint when SPU.range.Contains(physicalAddress): SPU.StoreHalf(physicalAddress, value); break;
                 case uint when Timer0.Range.Contains(physicalAddress): Timer0.Write(physicalAddress, value); break;
                 case uint when Timer1.Range.Contains(physicalAddress): Timer1.Write(physicalAddress, value); break;
@@ -204,7 +204,7 @@ namespace PSXSharp {
             if (debug) Console.WriteLine("read8: " + address.ToString("X"));
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress):  return RAM.LoadByte(physicalAddress);
+                case uint when RAM.Range.Contains(physicalAddress):  return RAM.Read<byte>(physicalAddress);
                 case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadByte(physicalAddress);
                 case uint when CDROM.range.Contains(physicalAddress): return CDROM.LoadByte(physicalAddress);
                 case uint when DMA.range.Contains(physicalAddress): return DMA.LoadByte(physicalAddress);
@@ -230,7 +230,7 @@ namespace PSXSharp {
             if (debug) Console.WriteLine("write8: " + address.ToString("X"));
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): RAM.StoreByte(physicalAddress, value); break;
+                case uint when RAM.Range.Contains(physicalAddress): RAM.Write<byte>(physicalAddress, value); break;
                 case uint when Scratchpad.range.Contains(physicalAddress): Scratchpad.StoreByte(physicalAddress, value); break;
                 case uint when CDROM.range.Contains(physicalAddress): CDROM.StoreByte(physicalAddress, value); break;
                 case uint when DMA.range.Contains(physicalAddress): DMA.StoreByte(physicalAddress, value); break;
@@ -274,13 +274,13 @@ namespace PSXSharp {
             int LinkedListMax = 0xFFFF;     //A hacky way to get out of infinite list transfares
 
             while (LinkedListMax-- > 0) {
-                uint header = RAM.LoadWord(address);
+                uint header = RAM.Read<uint>(address);
                 uint num_of_words = header >> 24;
 
                 while (num_of_words > 0) {
                     address = (address + 4) & 0x1ffffc;
 
-                    uint command = RAM.LoadWord(address);
+                    uint command = RAM.Read<uint>(address);
                     GPU.WriteGP0(command);
                     num_of_words -= 1;
 
@@ -331,7 +331,7 @@ namespace PSXSharp {
 
                 if (ch.get_direction() == ((uint)DMAChannel.Direction.FromRam)) {
 
-                    uint data = RAM.LoadWord(current_address);
+                    uint data = RAM.Read<uint>(current_address);
 
                     switch (ch.get_portnum()) {
                         case 0: MDEC.CommandAndParameters(data); break;   //MDECin  (RAM to MDEC)
@@ -344,7 +344,7 @@ namespace PSXSharp {
                     switch (ch.get_portnum()) {
                         case 1:
                             uint w = MDEC.ReadCurrentMacroblock();                           
-                            RAM.StoreWord(current_address, w);
+                            RAM.Write<uint>(current_address, w);
                             break;
 
                         case 2:  //GPU
@@ -353,17 +353,17 @@ namespace PSXSharp {
                                 GPU.CurrentTransfare = null;
                                 GPU.currentState = GPU.GPUState.Idle;
                             }
-                            RAM.StoreWord(current_address, data);
+                            RAM.Write<uint>(current_address, data);
                             break;
 
-                        case 3: RAM.StoreWord(current_address, CDROM.DataController.ReadWord()); break;  //CD-ROM
-                        case 4: RAM.StoreWord(current_address, SPU.SPUtoDMA()); break;                    //SPU
+                        case 3: RAM.Write<uint>(current_address, CDROM.DataController.ReadWord()); break;  //CD-ROM
+                        case 4: RAM.Write<uint>(current_address, SPU.SPUtoDMA()); break;                    //SPU
 
                         case 6:
                             if (transfer_size == 1) {
-                                RAM.StoreWord(current_address, 0xffffff);
+                                RAM.Write<uint>(current_address, 0xffffff);
                             } else {
-                                RAM.StoreWord(current_address, (base_address - 4) & 0x1fffff);
+                                RAM.Write<uint>(current_address, (base_address - 4) & 0x1fffff);
                             }
                             break;
 

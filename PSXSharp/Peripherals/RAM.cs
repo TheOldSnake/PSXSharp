@@ -8,42 +8,16 @@ namespace PSXSharp {
         public Range Range = new Range(0x00000000, 8*1024*1024);
         byte* Data = NativeMemoryManager.AllocateGuestMemory();
 
-        public uint LoadWord(uint address) {
+        public T Read<T>(uint address) where T : unmanaged {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-            return Unsafe.Read<uint>(Data + final);
+            return Unsafe.Read<T>(Data + final);
         }
 
-        public void StoreWord(uint address, uint value) {
+        public void Write<T>(uint address, T value) where T : unmanaged {
             uint offset = address - Range.start;
             uint final = Mirror(offset);
-            Unsafe.Write<uint>(Data + final, value);
-            CPUWrapper.GetCPUInstance().SetInvalidRAMBlock(final >> 2);
-        }
-
-        public ushort LoadHalf(uint address) {
-            uint offset = address - Range.start;
-            uint final = Mirror(offset);
-            return Unsafe.Read<ushort>(Data + final);
-        }
-
-        public void StoreHalf(uint address, ushort value) {
-            uint offset = address - Range.start;
-            uint final = Mirror(offset);
-            Unsafe.Write<ushort>(Data + final, value);
-            CPUWrapper.GetCPUInstance().SetInvalidRAMBlock(final >> 2);
-        }
-
-        public byte LoadByte(uint address) {
-            uint offset = address - Range.start;
-            uint final = Mirror(offset);
-            return Unsafe.Read<byte>(Data + final);
-        }
-
-        public void StoreByte(uint address, byte value) {
-            uint offset = address - Range.start;
-            uint final = Mirror(offset);
-            Unsafe.Write<byte>(Data + final, value);
+            Unsafe.Write<T>(Data + final, value);
             CPUWrapper.GetCPUInstance().SetInvalidRAMBlock(final >> 2);
         }
 
