@@ -487,8 +487,7 @@ namespace PSXSharp {
             captureBuffers(0x800 + captureOffset, voices[1].lastSample);             //Capture Voice 1
             captureBuffers(0xC00 + captureOffset, voices[3].lastSample);             //Capture Voice 3
             captureOffset += 2;
-
-            if (captureOffset > 0x3FF) { captureOffset = 0; }
+            captureOffset &= 0x3FF;
 
             if (reverbCounter == 1) {
                 (reverbLeft, reverbRight) = processReverb(reverbLeft_Input, reverbRight_Input);
