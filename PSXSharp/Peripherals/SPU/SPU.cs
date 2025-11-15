@@ -51,7 +51,7 @@ namespace PSXSharp {
         uint transfer_address;
         uint currentAddress;
         uint reverbCurrentAddress;
-        Voice[] voices;
+        readonly Voice[] voices = new Voice[24];
         uint SPU_IRQ_Address;
 
         private int clk_counter = 0;
@@ -106,7 +106,6 @@ namespace PSXSharp {
 
         public Action SPUCallback;
         public SPU(ref CDROMDataController CDControl) {
-           voices = new Voice[24];
            for (int i = 0; i < voices.Length; i++) { 
                 voices[i] = new Voice();
            }
