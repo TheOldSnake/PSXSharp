@@ -40,8 +40,8 @@ namespace PSXSharp.Core.x64_Recompiler {
         public static BUS BUS;
         public static GTE GTE;
 
-        public static x64CacheBlock[] BIOS_CacheBlocks;
-        public static x64CacheBlock[] RAM_CacheBlocks;
+        public static readonly x64CacheBlock[] BIOS_CacheBlocks = new x64CacheBlock[BIOS_SIZE >> 2];
+        public static readonly x64CacheBlock[] RAM_CacheBlocks = new x64CacheBlock[RAM_SIZE >> 2];
         x64CacheBlock[] CurrentCache => IsBIOSBlock ? BIOS_CacheBlocks : RAM_CacheBlocks;
 
         public NativeMemoryManager MemoryManager;
@@ -87,14 +87,12 @@ namespace PSXSharp.Core.x64_Recompiler {
             CPU_Struct_Ptr->LO = 0xDeadBeef;
 
             //Initialize JIT cache for BIOS region
-            BIOS_CacheBlocks = new x64CacheBlock[BIOS_SIZE >> 2];
             for (int i = 0; i < BIOS_CacheBlocks.Length; i++) {
                 BIOS_CacheBlocks[i] = new x64CacheBlock();
                 BIOS_CacheBlocks[i].FunctionPointer = StubBlockPointer;
             }
 
             //Initialize JIT cache for RAM region
-            RAM_CacheBlocks = new x64CacheBlock[RAM_SIZE >> 2];
             for (int i = 0; i < RAM_CacheBlocks.Length; i++) {
                 RAM_CacheBlocks[i] = new x64CacheBlock();
                 RAM_CacheBlocks[i].FunctionPointer = StubBlockPointer;
@@ -668,7 +666,6 @@ namespace PSXSharp.Core.x64_Recompiler {
                     //Free managed objects
                     //Memory manager will handle freeing CPU_Struct_Ptr and the executable memory
                     MemoryManager.Dispose();
-
                     MemoryManager = null;
 
                     foreach (x64CacheBlock block in BIOS_CacheBlocks) {
@@ -679,8 +676,6 @@ namespace PSXSharp.Core.x64_Recompiler {
                         block.FunctionPointer = null;
                     }
 
-                    BIOS_CacheBlocks = null;
-                    RAM_CacheBlocks = null;
                     GTE = null;
                     Instance = null;
                 }
