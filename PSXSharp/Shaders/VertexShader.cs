@@ -1,29 +1,31 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace PSXSharp.Shaders {
+﻿namespace PSXSharp.Shaders {
     public partial class Shader {
-        public static readonly string VertixShader = @"
+        public static readonly string VertexShader = @"
             #version 330 
 
+            //Per primitive settings
             layout(location = 0) in ivec2 vertixInput;
-            layout(location = 1) in uvec3 vColors;
-            layout(location = 2) in vec2 inUV;
+            layout(location = 1) in vec3 vColors;   //Normalized floats
+            layout(location = 2) in vec2 inUV;      //Non-normalized floats
+            layout(location = 3) in int inClut;
+            layout(location = 4) in int inTexpage;
+            layout(location = 5) in int inTextureMode;
+            layout(location = 6) in int inIsDithered;
+            layout(location = 7) in int inTransparencyMode;
 
-
+            //Outputs to fragment shader
             out vec3 color_in;
             out vec2 texCoords;
             flat out ivec2 clutBase;
             flat out ivec2 texpageBase;
-         
-            uniform int renderMode = 0;
+            flat out int TextureMode;
+            flat out int isDithered;
+            flat out int transparencyMode;
+            flat out int maskBitSetting;
             flat out int renderModeFrag;
 
-            uniform int inClut;
-            uniform int inTexpage;
+            //Settings for drawing the whole frame
+            uniform int renderMode = 0;
 
             uniform float display_area_x_start = 0.0f;
             uniform float display_area_y_start = 0.0f;
@@ -52,15 +54,16 @@ namespace PSXSharp.Shaders {
 
             switch(renderMode){
                  case 0:            
-                        gl_Position.xyzw = vec4(xpos,ypos,0.0, 1.0); 
+                        gl_Position.xyzw = vec4(xpos, ypos, 0.0, 1.0); 
                         texpageBase = ivec2((inTexpage & 0xf) * 64, ((inTexpage >> 4) & 0x1) * 256);
                         clutBase = ivec2((inClut & 0x3f) * 16, inClut >> 6);
                         texCoords = inUV;
+                        color_in = vColors.rgb;
+                       
 
-                        color_in = vec3(
-                        float(vColors.r)/255.0,
-                        float(vColors.g)/255.0,
-                        float(vColors.b)/255.0);
+                        TextureMode       = inTextureMode;
+                        isDithered        = inIsDithered;
+                        transparencyMode  = inTransparencyMode;
 
                         return;
 
@@ -84,7 +87,7 @@ namespace PSXSharp.Shaders {
           
             texCoords = texcoords[gl_VertexID];
             gl_Position = positions[gl_VertexID];
-
+      
             return;
 
   

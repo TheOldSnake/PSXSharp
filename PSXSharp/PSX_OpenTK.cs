@@ -10,6 +10,7 @@ using PSXSharp.Peripherals.Timers;
 using PSXSharp.Shaders;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Timers;
@@ -19,8 +20,9 @@ namespace PSXSharp {
     public class PSX_OpenTK {
         public Renderer mainWindow;
         public PSX_OpenTK(string biosPath, string bootPath, bool isBootingEXE) {
+            //Disable CheckForMainThread to allow running from a secondary thread
             GLFWProvider.CheckForMainThread = false;
-
+            
             var nativeWindowSettings = new NativeWindowSettings() {
                 Size = new Vector2i(1024, 512),
                 Title = "OpenGL",
@@ -29,20 +31,11 @@ namespace PSXSharp {
                 WindowBorder = WindowBorder.Resizable,
             };
 
-            var Gws = GameWindowSettings.Default;
-            Gws.RenderFrequency = 00;   
-            Gws.UpdateFrequency = 00;
-         
-            nativeWindowSettings.Location = new Vector2i((1980 - nativeWindowSettings.Size.X) / 2, (1080 - nativeWindowSettings.Size.Y) / 2);
+            nativeWindowSettings.Location = AtCenterOfScreen(nativeWindowSettings.Size);
 
-            /*try {
-                var windowIcon = new WindowIcon(new OpenTK.Windowing.Common.Input.Image(300, 300, ImageToByteArray(@"PSX logo.jpg")));
-                nativeWindowSettings.Icon = windowIcon;
-            }
-            catch (FileNotFoundException ex) { 
-                Console.WriteLine("Warning: PSX logo not found!");
-            }*/
-            
+            var Gws = GameWindowSettings.Default;
+            Gws.RenderFrequency = 60;   
+            Gws.UpdateFrequency = 60;
 
             mainWindow = new Renderer(Gws, nativeWindowSettings);
             mainWindow.VSync = VSyncMode.Off;
@@ -73,7 +66,7 @@ namespace PSXSharp {
                 Bios,Ram,Scratchpad,cdrom,Spu,Dma,
                 JOY_IO, SerialIO1, MemoryControl,RamSize,CacheControl,
                 Ex1,Ex2,Timer0,Timer1,Timer2,Mdec,Gpu
-                );
+            );
 
 
             bool isRecompiler = true;
@@ -101,31 +94,32 @@ namespace PSXSharp {
             mainWindow = null;
             SerialIO1.Dispose();
         }   
+
+        public static Vector2i AtCenterOfScreen(Vector2i size) {
+            //Get screen resolution 
+            var videoMode = Monitors.GetPrimaryMonitor().CurrentVideoMode;
+            int width = videoMode.Width;
+            int height = videoMode.Height;
+            int newX = (width - size.X) / 2;
+            int newY = (height - size.Y) / 2;
+            return new Vector2i(newX, newY);
+        }
     }
 
     public class Renderer : GameWindow {    //Now it gets really messy 
-        //public CPUInterpreter CPU;
         public CPU MainCPU;
+        public bool IsEmuPaused;
 
-        public bool IsEmuPaused; 
-
-        const int VRAM_WIDTH = 1024;
-        const int VRAM_HEIGHT = 512;
-
+        //Locations
         private int VertexArrayObject;
         private int VertexBufferObject;
-        private int ColorsBuffer;
         private int VramTexture;
         private int VramFrameBuffer;
         private int SampleTexture;
-        private int TexCoords;
-        private int TexWindow;
-
+        private int TexWindowLoc;
         private int IsCopy;
-        private int TexModeLoc;
         private int MaskBitSettingLoc;
-        private int ClutLoc;
-        private int TexPageLoc;
+        private int RenderModeLoc;
 
         private int Display_Area_X_Start_Loc;
         private int Display_Area_Y_Start_Loc;
@@ -135,35 +129,58 @@ namespace PSXSharp {
         private int Aspect_Ratio_X_Offset_Loc;
         private int Aspect_Ratio_Y_Offset_Loc;
 
-        private int TransparencyModeLoc;
-        private int IsDitheredLoc;
-        private int RenderModeLoc;
-
-        //Signed 11 bits
-        private short DrawOffsetX = 0;
-        private short DrawOffsetY = 0;
-
-
-        public bool Is24bpp = false;
-
+        //General stuff
+        Shader Shader;
         public bool IsUsingMouse = false;
         public bool ShowTextures = true;
         public bool IsFullScreen = false;
 
-        int ScissorBox_X = 0;
-        int ScissorBox_Y = 0;
-        int ScissorBoxWidth = VRAM_WIDTH;
-        int ScissorBoxHeight = VRAM_HEIGHT;
-
-        short[] Vertices;
-        byte[] Colors;
-        ushort[] UV;
-
-        //This is going to contain blocks that are either clean (0) or dirty (1) for texture invalidation 
-        const int IntersectionBlockLength = 64;
+        //Texture invalidation 
+        private const int IntersectionBlockLength = 64;
         private int[,] IntersectionTable = new int[VRAM_HEIGHT / IntersectionBlockLength, VRAM_WIDTH / IntersectionBlockLength];
-        bool FrameUpdated = false;
-        Shader Shader;
+        private bool FrameUpdated = false;
+
+        //Vertex info buffer
+        private const int MAX_VERTICES = 5000;
+        private readonly VertexInfo[] VertexBuffer = new VertexInfo[MAX_VERTICES];
+        private int VertexInfoIndex = 0;
+        PrimitiveType CurrentBatchType = PrimitiveType.Triangles;
+
+        //Primitive Settings
+        readonly int SizeOfVertexInfo = Marshal.SizeOf<VertexInfo>();
+        readonly int Stride = Marshal.SizeOf<VertexInfo>();
+        readonly nint PositionOffset = Marshal.OffsetOf<VertexInfo>("Position");
+        readonly nint ColorOffset = Marshal.OffsetOf<VertexInfo>("Color");
+        readonly nint UVOffset = Marshal.OffsetOf<VertexInfo>("UV");
+        readonly nint ClutOffset = Marshal.OffsetOf<VertexInfo>("Clut");
+        readonly nint TexPageOffset = Marshal.OffsetOf<VertexInfo>("TexPage");
+        readonly nint TexModeOffset = Marshal.OffsetOf<VertexInfo>("TextureMode");
+        readonly nint DitherOffset = Marshal.OffsetOf<VertexInfo>("IsDithered");
+        readonly nint TransOffset = Marshal.OffsetOf<VertexInfo>("TransparencyMode");
+
+
+        //Global Settings
+        private int MaskBitSetting;
+        private int ScissorBox_X = 0;
+        private int ScissorBox_Y = 0;
+        private int ScissorBoxWidth = VRAM_WIDTH;
+        private int ScissorBoxHeight = VRAM_HEIGHT;
+        private ushort TexWindowX;
+        private ushort TexWindowY;
+        private ushort TexWindowZ;
+        private ushort TexWindowW;
+        private short DrawOffsetX = 0; //Signed 11 bits
+        private short DrawOffsetY = 0; //Signed 11 bits
+        public bool Is24bpp = false;
+
+        //Constants
+        private const int VRAM_WIDTH = 1024;
+        private const int VRAM_HEIGHT = 512;
+
+        private const int VERTEX_ELEMENTS = 2;  //X, Y
+        private const int UV_ELEMENTS = 2;      //U, V
+        private const int COLOR_ELEMENTS = 3;   //R, G, B
+        private const int REVERSE_SUBTRACT = 2; //B - F Transparency Mode
 
         public enum RenderMode {
             RenderingPrimitives = 0,                    //Normal mode that games will use to draw primitives
@@ -182,9 +199,8 @@ namespace PSXSharp {
         }
 
         protected override void OnLoad() {
-
             //Load shaders 
-            Shader = new Shader(Shader.VertixShader, Shader.FragmentShader);
+            Shader = new Shader(Shader.VertexShader, Shader.FragmentShader);
             Shader.Use();
 
             GL.Viewport(0, 0, this.Size.X, this.Size.Y);
@@ -193,15 +209,9 @@ namespace PSXSharp {
             SwapBuffers();
             
             //Get Locations
-            TexWindow = GL.GetUniformLocation(Shader.Program, "u_texWindow");
-            TexModeLoc = GL.GetUniformLocation(Shader.Program, "TextureMode");
-            ClutLoc = GL.GetUniformLocation(Shader.Program, "inClut");
-            TexPageLoc = GL.GetUniformLocation(Shader.Program, "inTexpage");
+            TexWindowLoc = GL.GetUniformLocation(Shader.Program, "u_texWindow");
             IsCopy = GL.GetUniformLocation(Shader.Program, "isCopy");
-
-            TransparencyModeLoc = GL.GetUniformLocation(Shader.Program, "transparencyMode");
             MaskBitSettingLoc = GL.GetUniformLocation(Shader.Program, "maskBitSetting");
-            IsDitheredLoc = GL.GetUniformLocation(Shader.Program, "isDithered");
             RenderModeLoc = GL.GetUniformLocation(Shader.Program, "renderMode");
 
             Display_Area_X_Start_Loc = GL.GetUniformLocation(Shader.Program, "display_area_x_start");
@@ -215,14 +225,11 @@ namespace PSXSharp {
             //Create VAO/VBO/Buffers and Textures
             VertexArrayObject = GL.GenVertexArray();
             VertexBufferObject = GL.GenBuffer();                 
-            ColorsBuffer = GL.GenBuffer();
-            TexCoords = GL.GenBuffer();
             VramTexture = GL.GenTexture();
             SampleTexture = GL.GenTexture();
             VramFrameBuffer = GL.GenFramebuffer();
 
             GL.BindVertexArray(VertexArrayObject);
-
             GL.Enable(EnableCap.Texture2D);
 
             GL.BindTexture(TextureTarget.Texture2D, VramTexture);
@@ -238,230 +245,269 @@ namespace PSXSharp {
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, VRAM_WIDTH, VRAM_HEIGHT, 0, PixelFormat.Bgra, PixelType.UnsignedShort1555Reversed, (IntPtr)null);
-
-         
+        
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, VramFrameBuffer);
             GL.FramebufferTexture2D(FramebufferTarget.DrawFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, VramTexture, 0);
             if (GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer) != FramebufferErrorCode.FramebufferComplete) {
-                Console.WriteLine("[OpenGL] Uncompleted Frame Buffer !");
+                throw new Exception("[OpenGL] Uncompleted Frame Buffer !");
             }
 
             GL.PixelStore(PixelStoreParameter.UnpackAlignment, 2);
             GL.PixelStore(PixelStoreParameter.PackAlignment, 2);
             GL.Uniform1(GL.GetUniformLocation(Shader.Program, "u_vramTex"), 0);
             GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);
+            SetPSXDrawingSettings();
 
             if (JoystickStates[0] != null) {
                 Console.WriteLine($"Controller Name: {JoystickStates[0].Name}");
             }
         }
 
-        public void SetOffset(Int16 x, Int16 y) {
-            //Already sign extended
-            DrawOffsetX = x; 
-            DrawOffsetY = y;   
+        public void SetPSXDrawingSettings() {
+            /*
+             Important note:
+             Data for an array specified by VertexAttribPointer will be converted to floating-point by normalizing if normalized is TRUE, 
+             and converted directly to floating-point otherwise. 
+             Data for an array specified by VertexAttribIPointer will always be left as integer values; such data are referred to as pure integers.
+             
+             in the shader:
+                VertexAttribIPointer must use int / ivec / uvec
+                VertexAttribPointer must use float / vec
+            */
+
+
+            GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
+            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
+            BindVertexInfo();
+
+            // Position (passed as is, and converted to floats manually in the shader)
+            GL.VertexAttribIPointer(0, VERTEX_ELEMENTS, VertexAttribIntegerType.Short, Stride, PositionOffset); 
+            GL.EnableVertexAttribArray(0);
+
+            // Colors (VertexAttribPointer with normalized = true converts to floats and normlizes to [0.0f, 1.0f])
+            GL.VertexAttribPointer(1, COLOR_ELEMENTS, VertexAttribPointerType.UnsignedByte, true, Stride, ColorOffset);
+            GL.EnableVertexAttribArray(1);
+
+            // UV  (VertexAttribPointer with normalized = false only converts to floats)
+            GL.VertexAttribPointer(2, UV_ELEMENTS, VertexAttribPointerType.UnsignedShort, false, Stride, UVOffset);
+            GL.EnableVertexAttribArray(2);
+
+            // Clut
+            GL.VertexAttribIPointer(3, 1, VertexAttribIntegerType.Int, Stride, ClutOffset);
+            GL.EnableVertexAttribArray(3);
+
+            // TexPage
+            GL.VertexAttribIPointer(4, 1, VertexAttribIntegerType.Int, Stride, TexPageOffset);
+            GL.EnableVertexAttribArray(4);
+
+            // TextureMode
+            GL.VertexAttribIPointer(5, 1, VertexAttribIntegerType.Int, Stride, TexModeOffset);
+            GL.EnableVertexAttribArray(5);
+
+            // IsDithered
+            GL.VertexAttribIPointer(6, 1, VertexAttribIntegerType.Int, Stride, DitherOffset);
+            GL.EnableVertexAttribArray(6);
+
+            // TransparencyMode
+            GL.VertexAttribIPointer(7, 1, VertexAttribIntegerType.Int, Stride, TransOffset);
+            GL.EnableVertexAttribArray(7);
+
+            EnableBlending();
         }
 
-        ushort TexWindowX;
-        ushort TexWindowY;
-        ushort TexWindowZ;
-        ushort TexWindowW;
+        public void BindVertexInfo() {
+            GL.BindBuffer(BufferTarget.ArrayBuffer, VertexBufferObject);
+            GL.BufferData(BufferTarget.ArrayBuffer, VertexInfoIndex * SizeOfVertexInfo, VertexBuffer, BufferUsageHint.StreamDraw);
+        }
+
+        public void EnsureEnoughBufferSpace(int numberOfVertices) {
+            if (VertexInfoIndex + numberOfVertices >= MAX_VERTICES) {
+                RenderBatch();
+            }
+        }
+
+        public void SetBatchType(PrimitiveType batchType) {
+            if (CurrentBatchType != batchType) {
+                RenderBatch();
+                CurrentBatchType = batchType;
+            }
+        }
+
+        public void EnableBlending() {
+            //B = Destination
+            //F = Source
+            GL.Enable(EnableCap.Blend);
+            GL.BlendFunc(BlendingFactor.Src1Color, BlendingFactor.Src1Alpha);        //Alpha values are handled in GLSL
+            GL.BlendEquation(BlendEquationMode.FuncAdd);
+        }
+
+        public void SetOffset(short x, short y) {
+            //Already sign extended
+            //Draw offset is handled in ApplyDrawingOffset
+            DrawOffsetX = x;
+            DrawOffsetY = y;
+        }
+
         public void SetTextureWindow(ushort x, ushort y, ushort z, ushort w) {
-            GL.Uniform4(TexWindow, x, y, z, w);
-            TexWindowX = x;
-            TexWindowY = y;
-            TexWindowZ = z;
-            TexWindowW = w;
+            if (x != TexWindowX || y != TexWindowY || z != TexWindowZ || w != TexWindowW) {
+                RenderBatch();
+                GL.Uniform4(TexWindowLoc, x, y, z, w);
+                TexWindowX = x;
+                TexWindowY = y;
+                TexWindowZ = z;
+                TexWindowW = w;
+            }
         }
 
         public void SetScissorBox(int x, int y, int width, int height) {
-            GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
+            if (x != ScissorBox_X || y != ScissorBox_Y || width != ScissorBoxWidth || height != ScissorBoxHeight) {
+                RenderBatch();
+                GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
 
-            ScissorBox_X = x;
-            ScissorBox_Y = y;
-            ScissorBoxWidth = Math.Max(width + 1, 0);
-            ScissorBoxHeight = Math.Max(height + 1, 0);
+                ScissorBox_X = x;
+                ScissorBox_Y = y;
+                ScissorBoxWidth = Math.Max(width + 1, 0);
+                ScissorBoxHeight = Math.Max(height + 1, 0);
 
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
+                GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
 
-            GL.Enable(EnableCap.ScissorTest);
-            GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);
+                GL.Enable(EnableCap.ScissorTest);
+                GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);
+            }
         }
 
-        public void DrawTrinangle(
-            short x1, short y1, 
-            short x2, short y2,
-            short x3, short y3,
-            byte r1, byte g1, byte b1,
-            byte r2, byte g2, byte b2,
-            byte r3, byte g3, byte b3,
-            ushort tx1, ushort ty1,
-            ushort tx2, ushort ty2,
-            ushort tx3, ushort ty3,
-            bool isTextured, ushort clut, ushort page, bool isDithered
-            ) {
-            
-            GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
-
-            Vertices = new short[]{
-             x1,  y1,
-             x2,  y2,
-             x3,  y3
-            };
-            Colors = new byte[]{
-             r1,  g1,  b1,
-             r2,  g2,  b2,
-             r3,  g3,  b3,
-            };
-            UV = new ushort[] {
-             tx1, ty1,
-             tx2, ty2,
-             tx3, ty3
-            };
-
-            if(!ApplyDrawingOffset(ref Vertices)) { return; }
-
-            GL.BindBuffer(BufferTarget.ArrayBuffer, VertexBufferObject);
-            GL.BufferData(BufferTarget.ArrayBuffer, Vertices.Length * sizeof(short), Vertices, BufferUsageHint.StreamDraw);
-            GL.VertexAttribIPointer(0, 2, VertexAttribIntegerType.Short, 0, (IntPtr)null);  //size: 2 for x,y only!
-            GL.EnableVertexAttribArray(0);
-
-            GL.BindBuffer(BufferTarget.ArrayBuffer, ColorsBuffer);
-            GL.BufferData(BufferTarget.ArrayBuffer, Colors.Length * sizeof(byte), Colors, BufferUsageHint.StreamDraw);
-            GL.VertexAttribIPointer(1, 3, VertexAttribIntegerType.UnsignedByte, 0, (IntPtr)null);
-            GL.EnableVertexAttribArray(1);
-
-            if (isTextured) {
-                GL.Uniform1(ClutLoc, clut);
-                GL.Uniform1(TexPageLoc, page);
-                GL.Uniform1(TexModeLoc, (page >> 7) & 3);
-                GL.BindBuffer(BufferTarget.ArrayBuffer, TexCoords);
-                GL.BufferData(BufferTarget.ArrayBuffer, UV.Length * sizeof(ushort), UV, BufferUsageHint.StreamDraw);
-                GL.VertexAttribPointer(2, 2, VertexAttribPointerType.UnsignedShort, false, 0, (IntPtr)null);
-                GL.EnableVertexAttribArray(2);
-               
-                if (TextureInvalidatePrimitive(ref UV, page, clut)) {
-                    VramSync();
-                }
-
+        public void SetMaskBitSetting(int setting) {
+            if (setting != MaskBitSetting) {
+                RenderBatch();
+                GL.Uniform1(MaskBitSettingLoc, setting);
+                MaskBitSetting = setting;
             }
-            else {
-                GL.Uniform1(TexModeLoc, -1);
-                GL.Uniform1(ClutLoc, 0);
-                GL.Uniform1(TexPageLoc, 0);
-                GL.DisableVertexAttribArray(2);
-            }
-
-            GL.Uniform1(IsDitheredLoc, isDithered ? 1 : 0);
-
-            GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
-            UpdateIntersectionTable(ref Vertices);
-            FrameUpdated = true;
         }
 
-        public void DrawRectangle(
-            short x1, short y1,
-            short x2, short y2,
-            short x3, short y3,
-            short x4, short y4,
-            byte r1, byte g1, byte b1,
-            byte r2, byte g2, byte b2,
-            byte r3, byte g3, byte b3,
-            byte r4, byte g4, byte b4,
-            ushort tx1, ushort ty1,
-            ushort tx2, ushort ty2,
-            ushort tx3, ushort ty3,
-            ushort tx4, ushort ty4,
+        public void RenderBatch() {
+            if (VertexInfoIndex == 0) { return; }
 
-            bool isTextured, ushort clut, ushort texPage, byte texDepth)  {
-          
-            GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
-            
-            Vertices = new short[]{
-             x1,  y1,
-             x2,  y2,
-             x3,  y3,
-             x4,  y4,
-            };
-            Colors = new byte[]{
-             r1,  g1,  b1,
-             r2,  g2,  b2,
-             r3,  g3,  b3,
-             r4,  g4,  b4,
-            };
-            UV = new ushort[] {
-             tx1, ty1,
-             tx2, ty2,
-             tx3, ty3,
-             tx4, ty4
-            };
+            //We need to rebind the vertex info buffer
+            BindVertexInfo();
 
-            if (!ApplyDrawingOffset(ref Vertices)) { return; }
-            GL.BindBuffer(BufferTarget.ArrayBuffer, VertexBufferObject);
-            GL.BufferData(BufferTarget.ArrayBuffer, Vertices.Length * sizeof(short), Vertices, BufferUsageHint.StreamDraw);
-            GL.VertexAttribIPointer(0, 2, VertexAttribIntegerType.Short, 0, (IntPtr)null);  //size: 2 for x,y only!
-            GL.EnableVertexAttribArray(0);
+            GL.DrawArrays(CurrentBatchType, 0, VertexInfoIndex);
 
-            GL.BindBuffer(BufferTarget.ArrayBuffer, ColorsBuffer);
-            GL.BufferData(BufferTarget.ArrayBuffer, Colors.Length * sizeof(byte), Colors, BufferUsageHint.StreamDraw);
-            GL.VertexAttribIPointer(1, 3, VertexAttribIntegerType.UnsignedByte, 0, (IntPtr)null);
-            GL.EnableVertexAttribArray(1);
-
-            if (isTextured) {
-                GL.Uniform1(ClutLoc, clut);
-                GL.Uniform1(TexPageLoc, texPage);
-                GL.Uniform1(TexModeLoc, texDepth);
-                GL.BindBuffer(BufferTarget.ArrayBuffer, TexCoords);
-                GL.BufferData(BufferTarget.ArrayBuffer, UV.Length * sizeof(ushort), UV, BufferUsageHint.StreamDraw);
-                GL.VertexAttribPointer(2, 2, VertexAttribPointerType.UnsignedShort, false, 0, (IntPtr)null);
-                GL.EnableVertexAttribArray(2);
-                if (TextureInvalidatePrimitive(ref UV, texPage, clut)) {
-                    VramSync();
-                }
-            }
-            else {
-                GL.Uniform1(TexModeLoc, -1);
-                GL.Uniform1(ClutLoc, 0);
-                GL.Uniform1(TexPageLoc, 0);
-                GL.DisableVertexAttribArray(2);
-            }
-
-            GL.Uniform1(IsDitheredLoc, 0);  //RECTs are NOT dithered
-
-            GL.DrawArrays(PrimitiveType.TriangleFan, 0, 4);
-            UpdateIntersectionTable(ref Vertices);
-            FrameUpdated = true;
+            //Console.WriteLine($"Batch Count = {VertexInfoIndex}");
+            VertexInfoIndex = 0;
         }
 
-        public void DrawLines(ref short[] vertices, ref byte[] colors, bool isPolyLine, bool isDithered) {
-            /*short firstX = vertices[0];
-            short firstY = vertices[1];
-            short lastX = vertices[vertices.Length - 2];
-            short lastY = vertices[vertices.Length - 1];
-            bool isWireFrame = (firstX == lastX) && (firstY == lastY);*/
-
-            GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
-            GL.Uniform1(TexModeLoc, -1);
+        //This function can handle more than one triangle
+        public void DrawTrinangles(Span<short> vertices, ReadOnlySpan<byte> colors, ReadOnlySpan<ushort> uv, 
+            bool isTextured, ushort clut, ushort texPage, int textureMode, bool isDithered, int transMode) {
             if (!ApplyDrawingOffset(ref vertices)) { return; }
 
-            GL.BindBuffer(BufferTarget.ArrayBuffer, VertexBufferObject);
-            GL.BufferData(BufferTarget.ArrayBuffer, vertices.Length * sizeof(short), vertices, BufferUsageHint.StreamDraw);
-            GL.VertexAttribIPointer(0, 2, VertexAttribIntegerType.Short, 0, (IntPtr)null);
-            GL.EnableVertexAttribArray(0);
+            EnsureEnoughBufferSpace(vertices.Length / VERTEX_ELEMENTS);
+            SetBatchType(PrimitiveType.Triangles);
 
-            GL.BindBuffer(BufferTarget.ArrayBuffer, ColorsBuffer);
-            GL.BufferData(BufferTarget.ArrayBuffer, colors.Length * sizeof(byte), colors, BufferUsageHint.StreamDraw);
-            GL.VertexAttribIPointer(1, 3, VertexAttribIntegerType.UnsignedByte, 0, (IntPtr)null);
-            GL.EnableVertexAttribArray(1);
+            //Sync vram if texture is dirty or if it's using B - F transparency mode
+            bool needSync = (isTextured && TextureInvalidatePrimitive(uv, texPage, clut)) || transMode == REVERSE_SUBTRACT; 
+            if (needSync) {
+                VramSync();
+            }
 
-            GL.Uniform1(IsDitheredLoc, isDithered ? 1 : 0);
+            int ditheringValue = isDithered ? 1 : 0;
+            int elementIndex = 0;          //Position and UV
+            int colorIndex = 0;            //Color
 
-            GL.DrawArrays(isPolyLine ? PrimitiveType.LineStrip : PrimitiveType.Lines, 0, vertices.Length / 2);
-            UpdateIntersectionTable(ref vertices);
+            for (; elementIndex < vertices.Length; elementIndex += VERTEX_ELEMENTS, colorIndex += COLOR_ELEMENTS) {
+                ReadOnlySpan<short> currentPosition = vertices.Slice(elementIndex, VERTEX_ELEMENTS);
+                ReadOnlySpan<ushort> currentUV = uv.Slice(elementIndex, UV_ELEMENTS);
+                ReadOnlySpan<byte> currentColor = colors.Slice(colorIndex, COLOR_ELEMENTS);
+                AddVertex(currentPosition, currentColor, currentUV, clut, texPage, textureMode, ditheringValue, transMode);
+            }
+
+            UpdateIntersectionTable(vertices);
             FrameUpdated = true;
         }
+
+        //Unused
+        public void DrawRectangle(Span<short> vertices, ReadOnlySpan<byte> colors, ReadOnlySpan<ushort> uv,
+            bool isTextured, ushort clut, ushort texPage, byte texDepth)  {
+
+            if (!ApplyDrawingOffset(ref vertices)) { return; }
+
+            EnsureEnoughBufferSpace(vertices.Length / VERTEX_ELEMENTS);
+            SetBatchType(PrimitiveType.TriangleFan); //I use TriangleFan for rectangles 
+
+            int textureMode = -1;
+            if (isTextured) {
+                textureMode = texDepth;
+                if (TextureInvalidatePrimitive(uv, texPage, clut)) {
+                    VramSync();
+                }
+            }
+
+            int elementIndex = 0;          //Position and UV
+            int colorIndex = 0;            //Color
+            const int ditheringValue = 0;  //Rectangles are NOT dithered
+
+            for (; elementIndex < vertices.Length; elementIndex += VERTEX_ELEMENTS, colorIndex += COLOR_ELEMENTS) {
+                ReadOnlySpan<short> currentPosition = vertices.Slice(elementIndex, VERTEX_ELEMENTS);
+                ReadOnlySpan<ushort> currentUV = uv.Slice(elementIndex, UV_ELEMENTS);
+                ReadOnlySpan<byte> currentColor = colors.Slice(colorIndex, COLOR_ELEMENTS);
+                AddVertex(currentPosition, currentColor, currentUV, clut, texPage, textureMode, ditheringValue, 0);
+            }
+
+            UpdateIntersectionTable(vertices);
+            FrameUpdated = true;
+        }
+
+        public void DrawLines(Span<short> vertices, ReadOnlySpan<byte> colors, bool isPolyLine, bool isDithered, int transMode) {
+            if (!ApplyDrawingOffset(ref vertices)) { return; }
+
+            PrimitiveType commandLinesType = isPolyLine ? PrimitiveType.LineStrip : PrimitiveType.Lines;
+            EnsureEnoughBufferSpace(vertices.Length / VERTEX_ELEMENTS);
+            SetBatchType(commandLinesType);
+
+            //Sync vram if it's using B - F transparency mode
+            bool needSync = transMode == REVERSE_SUBTRACT;
+            if (needSync) {
+                VramSync();
+            }
+
+            //No textures
+            const int textureMode = -1;
+            const int texPage = 0;
+            const int clut = 0;
+            ReadOnlySpan<ushort> uv = [0, 0];
+
+            int ditheringValue = isDithered ? 1 : 0;    
+            int elementIndex = 0;                       //Position
+            int colorIndex = 0;                         //Color
+              
+            for (; elementIndex < vertices.Length; elementIndex += VERTEX_ELEMENTS, colorIndex += COLOR_ELEMENTS) {
+                ReadOnlySpan<short> vertex = vertices.Slice(elementIndex, VERTEX_ELEMENTS);
+                ReadOnlySpan<byte> color = colors.Slice(colorIndex, COLOR_ELEMENTS);
+                AddVertex(vertex, color, uv, clut, texPage, textureMode, ditheringValue, transMode);
+            }
+
+            //Don't batch LineStrips because this will result in connecting all of the different strips
+            if (commandLinesType == PrimitiveType.LineStrip) {
+                RenderBatch();
+            }
+
+            UpdateIntersectionTable(vertices);
+            FrameUpdated = true;
+        }
+
+        public void AddVertex(ReadOnlySpan<short> positionSpan, ReadOnlySpan<byte> colorSpan, ReadOnlySpan<ushort> uvSpan,
+            int clut, int texPage, int texMode, int isDithered, int transMode) {
+            VertexBuffer[VertexInfoIndex++] = new VertexInfo {
+                Position = Position.FromSpan(positionSpan),
+                Color = Color.FromSpan(colorSpan),
+                UV = UV.FromSpan(uvSpan),
+                Clut = clut,
+                TexPage = texPage,
+                TextureMode = texMode,
+                IsDithered = isDithered,
+                TransparencyMode = transMode,
+            };
+        }       
 
         public void ReadBackTexture(int x, int y, int width, int height, ref ushort[] texData) {
             GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, VramFrameBuffer);
@@ -469,6 +515,8 @@ namespace PSXSharp {
         }
 
         public void VramFillRectangle(ref GPU_MemoryTransfer transfare) {
+            RenderBatch();
+
             int width = (int)transfare.Width;
             int height = (int)transfare.Height;
 
@@ -479,51 +527,52 @@ namespace PSXSharp {
             float g = ((transfare.Parameters[0] >> 8) & 0xFF) / 255.0f;
             float b = ((transfare.Parameters[0] >> 16) & 0xFF) / 255.0f;
 
-
             GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
             GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
             GL.ClearColor(r, g, b, 0.0f);       //alpha = 0 (bit 15)
             GL.Scissor(x, y, width, height);
             GL.Clear(ClearBufferMask.ColorBufferBit);
 
-            short[] rectangle = new short[] {
+            ReadOnlySpan<short> rectangle = [
                 (short)x, (short)y,
                 (short)(x+width), (short)y,
                 (short)(x+width),(short)(y+height),
                 (short)x, (short)(y+height)
-            };
+             ];
 
-            UpdateIntersectionTable(ref rectangle);
-            
-            //update_SamplingTexture();
-            
+            UpdateIntersectionTable(rectangle);
+                        
             GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);
             GL.ClearColor(0, 0, 0, 1.0f);
             FrameUpdated = true;
         }
 
         public void CpuToVramCopy(ref GPU_MemoryTransfer transfare) {
+            RenderBatch();
+
             int width = (int)transfare.Width;
             int height = (int)transfare.Height;
 
             int x_dst = (int)(transfare.Parameters[1] & 0x3FF);
             int y_dst = (int)((transfare.Parameters[1] >> 16) & 0x1FF);
 
+            bool forceSetMaskBit = ((MaskBitSetting & 1) != 0);
+            bool preserveMaskedPixels = (((MaskBitSetting >> 1) & 1) != 0);
 
-            if (MainCPU.GetBUS().GPU.ForceSetMaskBit) {
+            if (forceSetMaskBit) {
                 for (int i = 0; i < transfare.Data.Length; i++) { transfare.Data[i] |= (1 << 15); }
             }
 
-            //Slow
-            /* ushort[] old = new ushort[width * height];
-               if (CPU.BUS.GPU.preserve_masked_pixels) {
-                 GL.ReadPixels(x, y, width, height, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, old);
+            /*//Slow
+             ushort[] old = new ushort[width * height];
+               if (preserveMaskedPixels) {
+                 GL.ReadPixels(x_dst, y_dst, width, height, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, old);
                  for (int i = 0; i < width * height; i++) {
                      if ((old[i] >> 15) == 1) {
-                         textureData[i] = old[i];
+                         transfare.Data[i] = old[i];
                      }
                  }
-             } */
+             }*/
 
             GL.Disable(EnableCap.ScissorTest);
 
@@ -532,14 +581,14 @@ namespace PSXSharp {
             GL.TexSubImage2D(TextureTarget.Texture2D, 0, x_dst, y_dst, width, height, 
                 PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, transfare.Data);
 
-            short[] rectangle = new short[] {
-                (short)x_dst, (short)y_dst,
+            ReadOnlySpan<short> rectangle = [
+                 (short)x_dst, (short)y_dst,
                 (short)(x_dst+width), (short)y_dst,
                 (short)(x_dst+width),(short)(y_dst+height),
                 (short)x_dst, (short)(y_dst+height)
-            };
+             ];
 
-            UpdateIntersectionTable(ref rectangle);
+            UpdateIntersectionTable(rectangle);
             GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
             GL.Enable(EnableCap.ScissorTest);
             GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);
@@ -547,6 +596,8 @@ namespace PSXSharp {
         }
 
         private void VramSync() {
+            RenderBatch();
+
             GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, VramFrameBuffer);
             GL.BindTexture(TextureTarget.Texture2D, SampleTexture);
             GL.CopyTexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, 0, 0, VRAM_WIDTH, VRAM_HEIGHT);
@@ -560,7 +611,9 @@ namespace PSXSharp {
             }
         }
 
-        public void VramToVramCopy(ref GPU_MemoryTransfer transfare) {   
+        public void VramToVramCopy(ref GPU_MemoryTransfer transfare) {
+            RenderBatch();
+
             //This transfare should be subject to mask bit settings
 
             //Get the dimensions
@@ -576,22 +629,22 @@ namespace PSXSharp {
             //Console.WriteLine($"From: {x_src}, {y_src} to {x_dst}, {y_dst} --- Width: {width} Height: {height}");
 
             //Set up the verticies
-            ushort[] src_coords = new ushort[] {
+            ReadOnlySpan<ushort> src_coords = [
                 (ushort)x_src, (ushort)y_src,
                 (ushort)(x_src + width), (ushort)y_src,
                 (ushort)(x_src + width), (ushort)(y_src + height),
                 (ushort)x_src, (ushort)(y_src + height)
-            };
+            ];
 
-            short[] dst_coords = new short[] {
+            ReadOnlySpan<short> dst_coords = [
                 (short)x_dst, (short)y_dst,
                 (short)(x_dst + width), (short)y_dst,
                 (short)(x_dst + width), (short)(y_dst + height),
                 (short)x_dst, (short)(y_dst + height)
-            };
+            ];
 
             //Make sure we sample from an up-to-date texture
-            if (TextureInvalidate(ref src_coords)) {
+            if (TextureInvalidate(src_coords)) {
                 VramSync();
             }
 
@@ -639,12 +692,14 @@ namespace PSXSharp {
                 VramTexture, ImageTarget.Texture2D, 0, x_dst, y_dst, 0,
                 width, height, 1);
 
-            UpdateIntersectionTable(ref dst_coords);
+            UpdateIntersectionTable(dst_coords);
             FrameUpdated = true;
 
         }
 
         public void VramToCpuCopy(ref GPU_MemoryTransfer transfare) {
+            RenderBatch();
+
             int width = (int)transfare.Width;
             int height = (int)transfare.Height;
 
@@ -654,23 +709,7 @@ namespace PSXSharp {
             ReadBackTexture(x_src, y_src, width, height, ref transfare.Data);
         }
 
-        internal void SetBlendingFunction(uint function) {
-
-            GL.Uniform1(TransparencyModeLoc, (int)function);
-            //Console.WriteLine("Transparency: " +  function);
-
-            GL.Enable(EnableCap.Blend);
-            //B = Destination
-            //F = Source
-            GL.BlendFunc(BlendingFactor.Src1Color, BlendingFactor.Src1Alpha);        //Alpha values are handled in GLSL
-            GL.BlendEquation(function == 2? BlendEquationMode.FuncReverseSubtract : BlendEquationMode.FuncAdd);
-        }
-
-        internal void MaskBitSetting(int setting) {
-            GL.Uniform1(MaskBitSettingLoc, setting);
-        }
-
-        public bool TextureInvalidatePrimitive(ref ushort[] uv, uint texPage, uint clut) {
+        public bool TextureInvalidatePrimitive(ReadOnlySpan<ushort> uv, uint texPage, uint clut) {
             //Experimental 
             //Checks whether the textured primitive is reading from a dirty block
 
@@ -735,7 +774,7 @@ namespace PSXSharp {
             return false;
         }
 
-        public bool TextureInvalidate(ref ushort[] coords) {       
+        public bool TextureInvalidate(ReadOnlySpan<ushort> coords) {       
             //Hack: Always sync if preserve_masked_pixels is true
             //This is kind of slow but fixes Silent Hills 
             if (MainCPU.GetBUS().GPU.PreserveMaskedPixels) {
@@ -780,7 +819,7 @@ namespace PSXSharp {
         }
 
 
-        public void UpdateIntersectionTable(ref short[] vertices) {
+        public void UpdateIntersectionTable(ReadOnlySpan<short> vertices) {
             //Mark any affected blocks as dirty
             int smallestX = 1023;
             int smallestY = 511;
@@ -820,7 +859,7 @@ namespace PSXSharp {
         }
 
         //Applies Drawing offset and checks if final dimensions are valid (within range)
-        private bool ApplyDrawingOffset(ref short[] vertices) {
+        private bool ApplyDrawingOffset(ref Span<short> vertices) {
             short maxX = -1024;
             short maxY = -1024;
             short minX = 1023;
@@ -849,9 +888,8 @@ namespace PSXSharp {
         public int Frames = 0;
         public string TitleCopy;
 
-
-
         public void Display() {
+            RenderBatch();
             DisplayFrame();
             SwapBuffers();
             if (FrameUpdated) {
@@ -859,7 +897,6 @@ namespace PSXSharp {
                 FrameUpdated = false;
             }     
         }
-
 
         private void SetTimer() {
             // Create a timer with a 1 second interval.
@@ -876,62 +913,37 @@ namespace PSXSharp {
            Frames = 0;
         }
 
-       /* private async Task TimerLoop() {
-            while (true) {
-                await Task.Delay(1000); // Sample every second
-                double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-                stopwatch.Restart(); // Reset for next interval
-
-                double cycles = MainCPU.GetSpeed();
-                double speed = (cycles / (33868800 * elapsedSeconds)) * 100;
-
-                this.Title = TitleCopy + $" FPS: {Frames} | CPU: {speed:0.00}%";
-                Frames = 0;
-            }
-        }*/
-
         void DisplayFrame() {
+            //Disable scissoring and blending
             GL.Disable(EnableCap.ScissorTest);
             DisableBlending();
 
-            GL.Enable(EnableCap.Texture2D);
-            GL.DisableVertexAttribArray(1);
-            GL.DisableVertexAttribArray(2);
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, VramFrameBuffer); //Bind VRAM framebuffer as a read framebuffer
+            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);               //Bind screen frambuffer as draw framebuffer
+            GL.BindTexture(TextureTarget.Texture2D, VramTexture);                   //Bind VRAM texture
 
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, VramFrameBuffer);
-
-            if (Is24bpp) {
-                GL.Uniform1(RenderModeLoc, (int)RenderMode.Rendering16bppAs24bppFullVram);            
-            } else {
-                GL.Uniform1(RenderModeLoc, (int)RenderMode.Rendering16bppFullVram);
-            }
-
+            //Set render mode, view port, and aspect ratio
+            RenderMode currentRenderMode = Is24bpp ? RenderMode.Rendering16bppAs24bppFullVram : RenderMode.Rendering16bppFullVram;
+            GL.Uniform1(RenderModeLoc, (int)currentRenderMode);
             GL.Viewport(0, 0, this.Size.X, this.Size.Y);
-
-            //Disable the ScissorTest and unbind the FBO to draw the entire vram texture to the screen
-
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);
-            GL.BindTexture(TextureTarget.Texture2D, VramTexture);
-
             SetAspectRatio();
 
+            //Draw
             GL.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
 
-            //Enable ScissorTest and bind FBO for next draws 
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
-            GL.Enable(EnableCap.ScissorTest);
+            //Restore settings
+            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);     //Bind VRAM as Draw framebuffer
+            GL.Enable(EnableCap.ScissorTest);                                           //Enable scissoring
+            GL.BindTexture(TextureTarget.Texture2D, SampleTexture);                     //Bind VRAM sample texture
+            GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);  //Set scissor box
+            GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);            //Set render mode back to RenderingPrimitives
 
-            GL.BindTexture(TextureTarget.Texture2D, SampleTexture);
-            GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);
-            GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);
-
+            EnableBlending();
         }
 
         public void DisableBlending() {
-            ///GL.Disable(EnableCap.Blend);
             GL.BlendFunc(BlendingFactor.One, BlendingFactor.Zero);
             GL.BlendEquation(BlendEquationMode.FuncAdd);
-            GL.Uniform1(TransparencyModeLoc, 4);    //0-3 for the functions, 4 = disabled
         }
 
         public void SetAspectRatio() {
@@ -1112,8 +1124,8 @@ namespace PSXSharp {
 
             // Delete all the resources.
             GL.DeleteBuffer(VertexBufferObject);
-            GL.DeleteBuffer(ColorsBuffer);
-            GL.DeleteBuffer(TexCoords);
+           // GL.DeleteBuffer(ColorsBuffer);
+           // GL.DeleteBuffer(TexCoords);
             GL.DeleteVertexArray(VertexArrayObject);
             GL.DeleteFramebuffer(VramFrameBuffer);
             GL.DeleteTexture(VramTexture);

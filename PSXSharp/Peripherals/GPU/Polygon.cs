@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Windows.Forms;
 using System.Windows.Media.Media3D;
 
 namespace PSXSharp {
@@ -21,7 +22,7 @@ namespace PSXSharp {
         bool isTextured;
         bool isSemiTransparent;
         bool isRawTextured;
-        ushort semiTransparency;
+        int semiTransparency;
 
         uint[] vertices;
         uint[] colors;
@@ -40,7 +41,7 @@ namespace PSXSharp {
             isSemiTransparent = ((value >> 25) & 1) == 1;
             isRawTextured = ((value >> 24) & 1) == 1;
             numberOfVertices = isQuad ? 4 : 3;
-            this.semiTransparency = globalSemiTransparency;
+            semiTransparency = isSemiTransparent? globalSemiTransparency : -1;
             vertices = new uint[numberOfVertices];
             colors = new uint[numberOfVertices];
             uv = new uint[numberOfVertices];
@@ -120,49 +121,53 @@ namespace PSXSharp {
             clut = (ushort)(uv[0] >> 16);
             page = (ushort)(uv[1] >> 16);
 
-            if (isSemiTransparent) {
-                if (isTextured) {
-                    semiTransparency = (byte)((page >> 5) & 3);         
-                }
-                window.SetBlendingFunction(semiTransparency);
-            }
-            else {
-                window.DisableBlending();
+            int textureMode = isTextured? (page >> 7) & 3 : -1;
+
+            if (isSemiTransparent && isTextured) {
+                semiTransparency = (page >> 5) & 3;
             }
 
-            window.DrawTrinangle(
+            Span<short> verticies_span = [
                 (short)vertices[0], (short)(vertices[0] >> 16),
                 (short)vertices[1], (short)(vertices[1] >> 16),
                 (short)vertices[2], (short)(vertices[2] >> 16),
+            ];
 
+            ReadOnlySpan<byte> colors_span = [
                 (byte)colors[0], (byte)(colors[0] >> 8), (byte)(colors[0] >> 16),
                 (byte)colors[1], (byte)(colors[1] >> 8), (byte)(colors[1] >> 16),
                 (byte)colors[2], (byte)(colors[2] >> 8), (byte)(colors[2] >> 16),
+            ];
 
+            ReadOnlySpan<ushort> uv_span = [
                 (ushort)(uv[0] & 0xFF), (ushort)((uv[0] >> 8) & 0xFF),
                 (ushort)(uv[1] & 0xFF), (ushort)((uv[1] >> 8) & 0xFF),
                 (ushort)(uv[2] & 0xFF), (ushort)((uv[2] >> 8) & 0xFF),
+            ];
 
-                isTextured, clut, page, isDithered
-            );
+            window.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
+
             if (isQuad) {
+                verticies_span = [
+                    (short)vertices[1], (short)(vertices[1] >> 16),
+                    (short)vertices[2], (short)(vertices[2] >> 16),
+                    (short)vertices[3], (short)(vertices[3] >> 16),
+                ];
 
-                window.DrawTrinangle(
-                (short)vertices[1], (short)(vertices[1] >> 16),
-                (short)vertices[2], (short)(vertices[2] >> 16),
-                (short)vertices[3], (short)(vertices[3] >> 16),
+                colors_span = [
+                    (byte)colors[1], (byte)(colors[1] >> 8), (byte)(colors[1] >> 16),
+                    (byte)colors[2], (byte)(colors[2] >> 8), (byte)(colors[2] >> 16),
+                    (byte)colors[3], (byte)(colors[3] >> 8), (byte)(colors[3] >> 16),
+                ];
 
+                uv_span = [
+                    (ushort)(uv[1] & 0xFF), (ushort)((uv[1] >> 8) & 0xFF),
+                    (ushort)(uv[2] & 0xFF), (ushort)((uv[2] >> 8) & 0xFF),
+                    (ushort)(uv[3] & 0xFF), (ushort)((uv[3] >> 8) & 0xFF),
 
-                (byte)colors[1], (byte)(colors[1] >> 8), (byte)(colors[1] >> 16),
-                (byte)colors[2], (byte)(colors[2] >> 8), (byte)(colors[2] >> 16),
-                (byte)colors[3], (byte)(colors[3] >> 8), (byte)(colors[3] >> 16),
+                ];
 
-                (ushort)(uv[1] & 0xFF), (ushort)((uv[1] >> 8) & 0xFF),
-                (ushort)(uv[2] & 0xFF), (ushort)((uv[2] >> 8) & 0xFF),
-                (ushort)(uv[3] & 0xFF), (ushort)((uv[3] >> 8) & 0xFF),
-
-                isTextured, clut, page, isDithered
-                );
+                window.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
             }
         }
     }

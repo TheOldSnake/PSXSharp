@@ -1,37 +1,31 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace PSXSharp.Shaders {
+﻿namespace PSXSharp.Shaders {
     public partial class Shader {
         public static readonly string FragmentShader = @"
          #version 330 
 
+         //Inputs from vertex shader
          in vec3 color_in;
          in vec2 texCoords;
          flat in ivec2 clutBase;
          flat in ivec2 texpageBase;
-
-         uniform int TextureMode;
-
-         uniform int isDithered;
-         uniform int transparencyMode;                   //4 = disabled
-         uniform int maskBitSetting;
-         uniform int isCopy = 0;                         //Only change when doing copy by render
-
+         flat in int TextureMode;
+         flat in int isDithered;
+         flat in int transparencyMode;  
          flat in int renderModeFrag;
 
-         uniform ivec4 u_texWindow;
+        //Global settings
+         uniform int maskBitSetting;                    
+         uniform ivec4 u_texWindow;                     
 
+         uniform int isCopy = 0;     //Only change when doing copy by render
          uniform sampler2D u_vramTex;
 
-         //out vec4 outputColor;
+         //Outputs
          layout(location = 0, index = 0) out vec4 outputColor;
          layout(location = 0, index = 1) out vec4 outputBlendColor;
 
-         
+       
+        //Dithering constants
         mat4 ditheringTable = mat4(
             -4,  0, -3,  1,
              2, -2,  3, -1,
@@ -42,18 +36,18 @@ namespace PSXSharp.Shaders {
          vec3 dither(vec3 colors, vec2 position) {
 
             // % 4
-            int x = int((position.x * 1023.0)) & 3;
-            int y = int((position.y * 511.0)) & 3;
+            int x = int(position.x) & 3;
+            int y = int(position.y) & 3;
 
             int ditherOffset = int(ditheringTable[y][x]);
 
-            colors = colors * vec3(255.0, 255.0, 255.0);
-            colors = colors + vec3(ditherOffset, ditherOffset ,ditherOffset);
+            colors = colors * vec3(255.0);
+            colors = colors + vec3(ditherOffset);
 
             //Clamping to [0,255] (or [0,1]) is automatically done because 
             //the frame buffer format is of a normalized fixed-point (RGB5A1)
 
-           return colors / vec3(255.0, 255.0, 255.0);
+            return colors / vec3(255.0);
 
            }
 
@@ -62,13 +56,13 @@ namespace PSXSharp.Shaders {
                 return vec4(x,x,x,1);
            }
 
-            int floatToU5(float f) {				
-                     return int(floor(f * 31.0 + 0.5));
-               }
+         int floatToU5(float f) {				
+                return int(floor(f * 31.0 + 0.5));
+           }
 
-            int floatToU8(float f) {				
-                     return int(floor(f * 255.0 + 0.5));
-               }
+         int floatToU8(float f) {				
+                return int(floor(f * 255.0 + 0.5));
+           }
 
          vec4 sampleVRAM(ivec2 coords) {
                 coords &= ivec2(1023, 511); // Out-of-bounds VRAM accesses wrap
@@ -91,26 +85,29 @@ namespace PSXSharp.Shaders {
              }
 
            vec4 handleAlphaValues() {
-                     vec4 alpha;
+                     vec4 blendColor;
 
                      switch (transparencyMode) {
+                         case -1:                      // (B * 0) + F  ==> Blending Disabled
+                         case  2:                      // B - F (Handled manually)
+                             blendColor.xyzw = vec4(1.0, 1.0, 1.0, 0.0);      
+                             break; 
+
                          case 0:                     // B/2 + F/2
-                             alpha.xyzw = vec4(0.5, 0.5, 0.5, 0.5);      
+                             blendColor.xyzw = vec4(0.5, 0.5, 0.5, 0.5);      
                              break;
 
                          case 1:                     // B + F
-                         case 2:                     // B - F (Function will change to reverse subtract)
-                             alpha.xyzw = vec4(1.0, 1.0, 1.0, 1.0);      
-                             break;
+                            blendColor.xyzw = vec4(1.0, 1.0, 1.0, 1.0);  
+                            break;
 
                          case 3:                     // B + F/4
-                             alpha.xyzw = vec4(0.25, 0.25, 0.25, 1.0);      
+                             blendColor.xyzw = vec4(0.25, 0.25, 0.25, 1.0);      
                              break; 
-                           }
-
-                     return alpha;
-
-                 }
+                      }
+                     
+                     return blendColor;
+          }
 
          vec4 handle24bpp(ivec2 coords){
 
@@ -138,8 +135,7 @@ namespace PSXSharp.Shaders {
              return color / vec4(255.0f, 255.0f, 255.0f, 255.0f);   
          }
 
-         void main()
-         {
+         void main(){
 
              ivec2 coords;
 
@@ -164,8 +160,10 @@ namespace PSXSharp.Shaders {
 
 
                if(TextureMode == -1){		//No texture, for now i am using my own flag (TextureMode) instead of (inTexpage & 0x8000) 
-	                     outputColor.rgb = vec3(color_in.r, color_in.g, color_in.b);
+
+	                  outputColor.rgb = vec3(color_in.r, color_in.g, color_in.b);
                       outputBlendColor = handleAlphaValues();
+                      
                          if((maskBitSetting & 1) == 1){
                              outputColor.a = 1.0;
                          }else{
@@ -173,16 +171,16 @@ namespace PSXSharp.Shaders {
                          }
                  
                       if(((maskBitSetting >> 1) & 1) == 1){
-                         int currentPixel = sample16(ivec2((gl_FragCoord.xy - vec2(0.5,0.5)) * vec2(1024.0, 512.0)));
+                         int currentPixel = sample16(ivec2((gl_FragCoord.xy)));
                          if(((currentPixel >> 15) & 1) == 1){
                              discard;
                          }
                       }
 
               }else if(TextureMode == 0){  //4 Bit texture
-                     ivec2 texelCoord = ivec2(UV.x >> 2, UV.y) + texpageBase;
+                    ivec2 texelCoord = ivec2(UV.x >> 2, UV.y) + texpageBase;
     
-                       int sample = sample16(texelCoord);
+                    int sample = sample16(texelCoord);
                     int shift = (UV.x & 3) << 2;
                     int clutIndex = (sample >> shift) & 0xf;
 
@@ -212,7 +210,7 @@ namespace PSXSharp.Shaders {
                          }
 
                          if(((maskBitSetting >> 1) & 1) == 1){
-                             int currentPixel = sample16(ivec2((gl_FragCoord.xy - vec2(0.5,0.5)) * vec2(1024.0, 512.0)));
+                             int currentPixel = sample16(ivec2((gl_FragCoord.xy)));
                              if(((currentPixel >> 15) & 1) == 1){
                                  discard;
                              }
@@ -252,7 +250,7 @@ namespace PSXSharp.Shaders {
                           }
 
                          if(((maskBitSetting >> 1) & 1) == 1){
-                             int currentPixel = sample16(ivec2((gl_FragCoord.xy - vec2(0.5,0.5)) * vec2(1024.0, 512.0)));
+                             int currentPixel = sample16(ivec2((gl_FragCoord.xy)));
                              if(((currentPixel >> 15) & 1) == 1){
                                  discard;
                              }
@@ -296,7 +294,7 @@ namespace PSXSharp.Shaders {
                      }      
 
                      if(((maskBitSetting >> 1) & 1) == 1){
-                             int currentPixel = sample16(ivec2((gl_FragCoord.xy - vec2(0.5,0.5)) * vec2(1024.0, 512.0)));
+                             int currentPixel = sample16(ivec2((gl_FragCoord.xy)));
                              if(((currentPixel >> 15) & 1) == 1){
                                  discard;
                              }
@@ -304,11 +302,17 @@ namespace PSXSharp.Shaders {
                          
                  }
 
+                //Hack: simulate B - F mode:
+                if(transparencyMode == 2){
+                   vec4 b = sampleVRAM(ivec2((gl_FragCoord.xy)));
+                   outputColor.rgb = b.rgb - outputColor.rgb;
+                }
+
                  //Dithering is the same for all modes 
                  if(isDithered == 1){    
-                      outputColor.rgb = dither(outputColor.rgb, gl_FragCoord.xy - vec2(0.5, 0.5));
-                 }
-        
+                      outputColor.rgb = dither(outputColor.rgb, gl_FragCoord.xy);
+                 }           
+                                 
             }";
     }
 }

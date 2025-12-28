@@ -8,21 +8,24 @@ namespace PSXSharp {
         bool isPolyLine;
         bool isSemiTransparent;
         bool isDithered;
-        ushort semiTransparency;
+        int semiTransparency;
         List<uint> buffer = new List<uint>();
         short[] vertices;
         byte[] colors;
+
         public Line(uint value, bool isDithered, ushort globalSemiTransparency) {
-            this.isDithered = isDithered;
-            this.semiTransparency = globalSemiTransparency;
             isGouraud = ((value >> 28) & 1) == 1;
             isPolyLine = ((value >> 27) & 1) == 1;
             isSemiTransparent = ((value >> 25) & 1) == 1;
+            this.isDithered = isDithered;
+            semiTransparency = isSemiTransparent? globalSemiTransparency : -1;
             buffer.Add(value);
         }
+
         public void Add(uint value) {
             buffer.Add(value);
         }
+
         public bool IsReady() {
             //When polyline mode is active, at least two vertices must be sent to the GPU.
             //The vertex list is terminated by the bits 12-15 and 28-31 equaling 0x5, or (word & 0xF000F000) == 0x50005000.
@@ -33,6 +36,7 @@ namespace PSXSharp {
                 return buffer.Count == (isGouraud ? 4 : 3);  
             }
         }
+
         public void Draw(ref Renderer window) {
 
             int numOfVertices = buffer.Count;
@@ -69,14 +73,7 @@ namespace PSXSharp {
                 ptr += step;
             }
 
-            if (isSemiTransparent) {
-                window.SetBlendingFunction(semiTransparency);
-            }
-            else {
-                window.DisableBlending();
-            }
-
-            window.DrawLines(ref vertices, ref colors, isPolyLine, isDithered);
+            window.DrawLines(vertices, colors, isPolyLine, isDithered, semiTransparency);
         }
     }
  }

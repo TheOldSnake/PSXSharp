@@ -1,6 +1,7 @@
 ﻿using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
+using System.Windows.Forms;
 
 namespace PSXSharp {
     internal class Rectangle : Primitive {
@@ -16,19 +17,20 @@ namespace PSXSharp {
         byte B;
         ushort texPage; //Unlike for Textured-Polygons, the "Texpage" must be set up separately for Rectangles, via GP0(E1h)
                         //I also added texmode in texpage (bits 7-8)
-        byte semiTransparency;
-        byte texDepth;
+        int semiTransparency;
+        int texDepth;
 
         public Rectangle(uint value, ushort texPage, byte globalSemiTransparency, byte texDepth) { 
             //this.numOfParameters = numOfParameters;
-            this.opcode = (value >> 24) & 0xff;
-            this.texPage = texPage;
-            this.semiTransparency = globalSemiTransparency;
-            this.texDepth = texDepth;
+            opcode = (value >> 24) & 0xff;
             size = (byte)((value >> 27) & 0x3);
             isTextured = ((value >> 26) & 1) == 1;
             isSemiTransparent = ((value >> 25) & 1) == 1;
             isRawTextured = ((value >> 24) & 1) == 1;
+            semiTransparency = isSemiTransparent? globalSemiTransparency : -1;
+            this.texPage = texPage;
+            this.texDepth = isTextured? texDepth : -1;
+
             buffer.Add(value);
 
             this.numOfParameters = 2;
@@ -93,55 +95,28 @@ namespace PSXSharp {
             ushort clut = 0;
 
             if (isTextured) {
-                 tx1 = (ushort)(buffer[2] & 0xFF);          //Texture Upper left 
-                 ty1 = (ushort)((buffer[2] >> 8) & 0xFF);
+                tx1 = (ushort)(buffer[2] & 0xFF);          //Texture Upper left 
+                ty1 = (ushort)((buffer[2] >> 8) & 0xFF);
 
-                 tx2 = (ushort)(tx1 + width);               //Texture Lower right
-                 ty2 = (ushort)(ty1 + height);
+                tx2 = (ushort)(tx1 + width);               //Texture Lower right
+                ty2 = (ushort)(ty1 + height);
 
-                 clut = (ushort)(buffer[2] >> 16);
+                clut = (ushort)(buffer[2] >> 16);
             }
 
-            if (isSemiTransparent) {        
-                window.SetBlendingFunction(semiTransparency);
-            }
-            else {
-                window.DisableBlending();
-            }
+            //Split to 2 triangles
+            Span<short> verticies = [x1, y1,    x2, y1,     x1, y2, 
+                                     x2, y1,    x2, y2,     x1, y2];
 
-            window.DrawRectangle(
-                x1, y1, 
-                x2, y1, 
-                x2, y2, 
-                x1, y2, 
-                R, G, B, R, G, B, R, G, B, R, G, B,
-                tx1, ty1, tx2, ty1, tx2, ty2, tx1, ty2,
-                isTextured, clut, texPage, texDepth);
+            ReadOnlySpan<byte> colors = [R, G, B,    R, G, B,    R, G, B,
+                                         R, G, B,    R, G, B,    R, G, B];
 
-            /*window.drawTrinangle(
-                x1, y1,
-                x2, y1,
-                x1, y2,
-                R, G, B,
-                R, G, B,
-                R, G, B,
-                tx1, ty1,
-                tx2, ty1,
-                tx1, ty2,
-                isTextured, clut, texPage, false
-                );
-            window.drawTrinangle(
-                x2, y1,
-                x2, y2,
-                x1, y2,
-                R, G, B,
-                R, G, B,
-                R, G, B,
-                tx2, ty1,
-                tx2, ty2,
-                tx1, ty2,
-                isTextured, clut, texPage, false
-                );*/
+            ReadOnlySpan<ushort> uv = [tx1, ty1,    tx2, ty1,   tx1, ty2,
+                                       tx2, ty1,    tx2, ty2,   tx1, ty2];
+
+
+           const bool DITHERING = false;    //Rectangles are NOT dithered
+           window.DrawTrinangles(verticies, colors, uv, isTextured, clut, texPage, texDepth, DITHERING, semiTransparency);  
         }
     }
 }
