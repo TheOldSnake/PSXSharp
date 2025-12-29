@@ -474,16 +474,16 @@ namespace PSXSharp {
             ulong endFrameTime = currentTime + CYCLES_PER_FRAME;
 
             while (currentTime < endFrameTime) {
-                //Get the next event
-                ScheduledEvent nextEvent = Scheduler.DequeueNearestEvent();
-
-                //Run the CPU until the event
-                while (CurrentCycle < nextEvent.EndTime) {
+                //Run the CPU until the next event
+                while (CurrentCycle < Scheduler.ScheduledEvents[0].EndTime) {
                     emu_cycle();
                 }
 
+                ScheduledEvent readyEvent = Scheduler.ScheduledEvents[0];
+                Scheduler.ScheduledEvents.RemoveAt(0);
+
                 //Handle the ready event and check for interrupts
-                nextEvent.Callback();
+                readyEvent.Callback();
                 IRQCheck(this);
 
                 //Update current time

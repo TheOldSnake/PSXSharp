@@ -3,21 +3,13 @@ using System.Collections.Generic;
 
 namespace PSXSharp.Core {
     public static class Scheduler {
-        private static List<ScheduledEvent> ScheduledEvents = [];
-        private static ScheduledEvent CPUHeldEvent;
+        public static List<ScheduledEvent> ScheduledEvents = [];
         private static ulong CurrentTime => CPUWrapper.GetCPUInstance().GetCurrentCycle();
         public static int EventsCount => ScheduledEvents.Count;
 
         public static void ScheduleEvent(int delayCycles, Action callback, Event type) {
             ulong endTime = CurrentTime + (ulong)delayCycles;
             ScheduledEvent scheduledEvent = new ScheduledEvent(endTime, callback, type);
-
-            //If the incoming event is sooner than the event held by the CPU then switch to it and re-add the other one
-            if (CPUHeldEvent != null && scheduledEvent.EndTime < CPUHeldEvent.EndTime) {
-                SwapCPUHeldEvent(scheduledEvent);
-                return;
-            }
-
             InsertAndSort(scheduledEvent);
         }
 
@@ -25,23 +17,6 @@ namespace PSXSharp.Core {
             //Here CurrentTime is assumed to be 0
             ScheduledEvent scheduledEvent = new ScheduledEvent((ulong)delayCycles, callback, type);
             InsertAndSort(scheduledEvent);
-        }
-
-        public static ScheduledEvent DequeueNearestEvent() {
-            ScheduledEvent nearest = ScheduledEvents[0];
-            ScheduledEvents.RemoveAt(0);
-            CPUHeldEvent = nearest;
-            return nearest;
-        }
-
-        private static void SwapCPUHeldEvent(ScheduledEvent soonerEvent) {
-            //Deep copy
-            ScheduledEvent oldCPUHeldEvent = new ScheduledEvent(CPUHeldEvent.EndTime, CPUHeldEvent.Callback, CPUHeldEvent.Type);
-            InsertAndSort(oldCPUHeldEvent);
-
-            CPUHeldEvent.Callback = soonerEvent.Callback;
-            CPUHeldEvent.Type = soonerEvent.Type;
-            CPUHeldEvent.EndTime = soonerEvent.EndTime;
         }
 
         private static void InsertAndSort(ScheduledEvent scheduledEvent) {
@@ -57,27 +32,10 @@ namespace PSXSharp.Core {
                     ScheduledEvents.RemoveAt(i);
                 }
             }
-
-            //A bit hacky, if the CPU is holding an event that is flushed
-            //then overwrite the fields of the object held by the cpu
-
-            if (CPUHeldEvent.Type == type) {
-                ScheduledEvent next = ScheduledEvents[0];
-                ScheduledEvents.RemoveAt(0);
-
-                //We cannot simply assign CPUHeldEvent = next
-                CPUHeldEvent.Callback = next.Callback;
-                CPUHeldEvent.Type = next.Type;
-                CPUHeldEvent.EndTime = next.EndTime;
-            }
-
-            //However, this will cause the CPU to skip interrupt checking because it will continue
-            //until the event after the one that got flushed, whenever that is
         }
 
         public static void FlushAllEvents() {
             ScheduledEvents.Clear();
-            CPUHeldEvent = null;
         }
 
         public static bool HasEventOfType(Event type) {

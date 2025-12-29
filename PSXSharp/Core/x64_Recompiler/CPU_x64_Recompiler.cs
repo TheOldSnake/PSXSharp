@@ -112,18 +112,18 @@ namespace PSXSharp.Core.x64_Recompiler {
             ulong currentTime = CPU_Struct_Ptr->CurrentCycle;
             ulong endFrameTime = currentTime + CYCLES_PER_FRAME;
 
-            while (currentTime < endFrameTime) {
-                //Get the next event
-                ScheduledEvent nextEvent = Scheduler.DequeueNearestEvent();
-
-                //Run the CPU until the event
-                while (CPU_Struct_Ptr->CurrentCycle < nextEvent.EndTime) {
+            while (currentTime < endFrameTime) {         
+                //Run the CPU until the next event
+                while (CPU_Struct_Ptr->CurrentCycle < Scheduler.ScheduledEvents[0].EndTime) {
                     Run();
                 }
 
+                ScheduledEvent readyEvent = Scheduler.ScheduledEvents[0];
+                Scheduler.ScheduledEvents.RemoveAt(0);
+
                 //Handle the ready event and check for interrupts
                 //TODO: Handle GTE IRQ behaviour
-                nextEvent.Callback();
+                readyEvent.Callback();
                 IRQCheck();  
 
                 //Update current time
