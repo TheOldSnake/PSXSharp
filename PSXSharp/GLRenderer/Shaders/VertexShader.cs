@@ -88,10 +88,10 @@
                     transparencyMode = inTransparencyMode;
 
                 } else {
-                     //16/24bpp vram -> Screen
-                     //Set up the position and UV to draw the vram texture
-                     gl_Position = handleAspectRatio(gl_VertexID);
-                     texCoords = handleDisplayArea(gl_VertexID);
+                    //16/24bpp vram -> Screen
+                    //Set up the position and UV to draw the vram texture
+                    gl_Position = handleAspectRatio(gl_VertexID);
+                    texCoords = handleDisplayArea(gl_VertexID);
                 }
         }";
     }
