@@ -69,29 +69,28 @@
 
             void main() {
   
-                //Convert x from [0,1023] and y from [0,511] coords to [-1,1]
-                float xpos = ((float(vertixInput.x) + 0.5) / 512.0) - 1.0;
-                float ypos = ((float(vertixInput.y) - 0.5) / 256.0) - 1.0;
+               //Convert x from [0,1023] and y from [0,511] coords to [-1,1]
+               float xpos = ((float(vertixInput.x) + 0.5) / 512.0) - 1.0;
+               float ypos = ((float(vertixInput.y) - 0.5) / 256.0) - 1.0;
 
-                vec2 texcoords[4];
-                renderModeFrag = renderMode; //Pass rendermode 
+               vec2 texcoords[4];
+               renderModeFrag = renderMode; //Pass rendermode 
             
-                if(renderMode == RENDER_PRIM){
-                    //Pass the flat outs
-                    gl_Position.xyzw = vec4(xpos, ypos, 0.0, 1.0); 
-                    texpageBase = ivec2((inTexpage & 0xf) * 64, ((inTexpage >> 4) & 0x1) * 256);
-                    clutBase = ivec2((inClut & 0x3f) * 16, inClut >> 6);
-                    texCoords = inUV;
-                    vertexColor = vColors.rgb;                       
-                    textureMode = inTextureMode;
-                    isDithered = inIsDithered;
-                    transparencyMode = inTransparencyMode;
-
+               if(renderMode == RENDER_PRIM){
+                   //Pass the flat outs
+                   gl_Position.xyzw = vec4(xpos, ypos, 0.0, 1.0); 
+                   texpageBase = ivec2((inTexpage & 0xf) * 64, ((inTexpage >> 4) & 0x1) * 256);
+                   clutBase = ivec2((inClut & 0x3f) * 16, inClut >> 6);
+                   texCoords = inUV;
+                   vertexColor = vColors.rgb;                       
+                   textureMode = inTextureMode;
+                   isDithered = inIsDithered;
+                   transparencyMode = inTransparencyMode;
                 } else {
-                    //16/24bpp vram -> Screen
-                    //Set up the position and UV to draw the vram texture
-                    gl_Position = handleAspectRatio(gl_VertexID);
-                    texCoords = handleDisplayArea(gl_VertexID);
+                   //16/24bpp vram -> Screen
+                   //Set up the position and UV to draw the vram texture
+                   gl_Position = handleAspectRatio(gl_VertexID);
+                   texCoords = handleDisplayArea(gl_VertexID);
                 }
         }";
     }
