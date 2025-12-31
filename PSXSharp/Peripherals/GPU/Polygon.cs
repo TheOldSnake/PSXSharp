@@ -113,7 +113,7 @@ namespace PSXSharp {
             return (uv[1] >> 16);
         }
    
-        public void Draw(ref Renderer window) {
+        public void Draw() {
             if (!setupArrays) {
                 SetupArrays();
             }
@@ -145,7 +145,7 @@ namespace PSXSharp {
                 (ushort)(uv[2] & 0xFF), (ushort)((uv[2] >> 8) & 0xFF),
             ];
 
-            window.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
+            GLRenderBackend.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
 
             if (isQuad) {
                 verticies_span = [
@@ -167,7 +167,7 @@ namespace PSXSharp {
 
                 ];
 
-                window.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
+                GLRenderBackend.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
             }
         }
     }

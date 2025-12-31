@@ -37,7 +37,7 @@ namespace PSXSharp {
             }
         }
 
-        public void Draw(ref Renderer window) {
+        public void Draw() {
 
             int numOfVertices = buffer.Count;
 
@@ -73,7 +73,7 @@ namespace PSXSharp {
                 ptr += step;
             }
 
-            window.DrawLines(vertices, colors, isPolyLine, isDithered, semiTransparency);
+            GLRenderBackend.DrawLines(vertices, colors, isPolyLine, isDithered, semiTransparency);
         }
     }
  }

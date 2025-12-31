@@ -53,7 +53,7 @@ namespace PSXSharp {
         public bool IsReady() {
             return buffer.Count == numOfParameters;
         }
-        public void Draw(ref Renderer window) {
+        public void Draw() {
         
             //...and, of course, the GPU does render Rectangles as a single entity, without splitting them into two triangles.
             //Width and Height can be up to 1023x511
@@ -116,7 +116,30 @@ namespace PSXSharp {
 
 
            const bool DITHERING = false;    //Rectangles are NOT dithered
-           window.DrawTrinangles(verticies, colors, uv, isTextured, clut, texPage, texDepth, DITHERING, semiTransparency);  
+           GLRenderBackend.DrawTrinangles(verticies, colors, uv, isTextured, clut, texPage, texDepth, DITHERING, semiTransparency);  
+        }
+
+        //Helpers
+        public static void WriteRectangleCoords(int x, int y, int width, int height, Span<short> destination) {
+            destination[0] = (short)x;
+            destination[1] = (short)y;
+            destination[2] = (short)(x + width);
+            destination[3] = (short)y;
+            destination[4] = (short)(x + width);
+            destination[5] = (short)(y + height);
+            destination[6] = (short)x;
+            destination[7] = (short)(y + height);
+        }
+
+        public static void WriteRectangleCoords(int x, int y, int width, int height, Span<ushort> destination) {
+            destination[0] = (ushort)x;
+            destination[1] = (ushort)y;
+            destination[2] = (ushort)(x + width);
+            destination[3] = (ushort)y;
+            destination[4] = (ushort)(x + width);
+            destination[5] = (ushort)(y + height);
+            destination[6] = (ushort)x;
+            destination[7] = (ushort)(y + height);
         }
     }
 }

@@ -8,7 +8,6 @@ using System.Windows.Forms;
 namespace PSXSharp {
     public class GPU {
         public Range Range = new Range(0x1f801810, 5);
-        public Renderer Renderer;
         public enum GPUState {
             LoadingPrimitive,
             Idle,
@@ -110,7 +109,7 @@ namespace PSXSharp {
         double DotClock = 0;
 
 
-        public GPU(Renderer rederingWindow, ref Timer0 timer0, ref Timer1 timer1) {
+        public GPU(ref Timer0 timer0, ref Timer1 timer1) {
             PageBaseX = 0;
             PageBaseY = 0;
             SemiTransparency = 0;
@@ -128,7 +127,6 @@ namespace PSXSharp {
             DisplayDisabled = true;
             Interrupt = false;
             dmaDirection = DmaDirection.Off;
-            Renderer = rederingWindow;
             TIMER0 = timer0;
             TIMER1 = timer1;
             VblankEventCallback = VblankEvent;
@@ -210,7 +208,7 @@ namespace PSXSharp {
 
         public void VblankEvent() {
             if (!DisplayDisabled) {
-                Renderer.Display();
+                EmulatorWindow.UpdateWindow();
             }
 
             //In 480-lines mode, bit31 changes per frame.
@@ -308,31 +306,31 @@ namespace PSXSharp {
                     this.TextureDepth = (byte)((drawMode >> 7) & 3);
                 }
             }
-            primitive.Draw(ref Renderer);
+            primitive.Draw();
         }
 
         private void HandleTransfer() {
             switch (CurrentTransfare.Type) {
                 case (uint)TransferType.VramFill:
-                    Renderer.VramFillRectangle(ref CurrentTransfare);
+                    GLRenderBackend.VramFillRectangle(ref CurrentTransfare);
                     CurrentTransfare = null;
                     currentState = GPUState.Idle;
                     break;
 
                 case (uint)TransferType.VramToVram:
-                    Renderer.VramToVramCopy(ref CurrentTransfare);
+                    GLRenderBackend.VramToVramCopy(ref CurrentTransfare);
                     CurrentTransfare = null;
                     currentState = GPUState.Idle;
                     break;
 
                 case (uint)TransferType.CpuToVram:
-                    Renderer.CpuToVramCopy(ref CurrentTransfare);
+                    GLRenderBackend.CpuToVramCopy(ref CurrentTransfare);
                     CurrentTransfare = null;
                     currentState = GPUState.Idle;
                     break;
 
                 case (uint)TransferType.VramToCpu:
-                    Renderer.VramToCpuCopy(ref CurrentTransfare);
+                    GLRenderBackend.VramToCpuCopy(ref CurrentTransfare);
                     break;
 
                 default: throw new NotImplementedException();
@@ -384,7 +382,7 @@ namespace PSXSharp {
         private void GP0MaskBit(uint value) {
             ForceSetMaskBit = ((value & 1) != 0);
             PreserveMaskedPixels = (((value >> 1) & 1) != 0);
-            Renderer.SetMaskBitSetting((int)value);
+            GLRenderBackend.SetMaskBitSetting((int)value);
         }
 
         private void GP0TextureWindow(uint value) {
@@ -397,7 +395,7 @@ namespace PSXSharp {
             TextureWindowXOffset = ((value >> 10) & 0x1f);
             TextureWindowYOffset = ((value >> 15) & 0x1f);
 
-            Renderer.SetTextureWindow((ushort)TextureWindowXMask, (ushort)TextureWindowYMask, 
+            GLRenderBackend.SetTextureWindow((ushort)TextureWindowXMask, (ushort)TextureWindowYMask, 
                 (ushort)TextureWindowXOffset, (ushort)TextureWindowYOffset);
         }
    
@@ -409,20 +407,20 @@ namespace PSXSharp {
             DrawingXOffset = (short)(((short)(x << 5)) >> 5);
             DrawingYOffset = (short)(((short)(y << 5)) >> 5);
 
-            Renderer.SetOffset(DrawingXOffset, DrawingYOffset);
+            GLRenderBackend.SetOffset(DrawingXOffset, DrawingYOffset);
         }
 
         private void GP0DrawingAreaBottomRight(uint value) {
             DrawingAreaBottom = (ushort)((value >> 10) & 0x3ff);
             DrawingAreaRight = (ushort)(value & 0x3ff);
-            Renderer.SetScissorBox(DrawingAreaLeft, DrawingAreaTop,
+            GLRenderBackend.SetScissorBox(DrawingAreaLeft, DrawingAreaTop,
                 DrawingAreaRight - DrawingAreaLeft, DrawingAreaBottom - DrawingAreaTop);
         }
 
         private void GP0DrawingAreaTopLeft(uint value) {
             DrawingAreaTop = (ushort)((value >> 10) & 0x3ff);
             DrawingAreaLeft = (ushort)(value & 0x3ff);
-            Renderer.SetScissorBox(DrawingAreaLeft, DrawingAreaTop,
+            GLRenderBackend.SetScissorBox(DrawingAreaLeft, DrawingAreaTop,
                 DrawingAreaRight - DrawingAreaLeft, DrawingAreaBottom - DrawingAreaTop);
         }
 
@@ -526,7 +524,7 @@ namespace PSXSharp {
 
             uint depth = (uint)((value >> 4) & 1);
             displayDepth = (DisplayDepth)(depth);       //Not needed
-            Renderer.Is24bpp = depth == 1;
+            EmulatorWindow.Is24bpp = depth == 1;
         }
 
         private void GP0DrawMode(uint value) {
@@ -589,7 +587,7 @@ namespace PSXSharp {
                 Scheduler.ScheduleEvent(CPUCyclesPerHblank, HblankEventCallback, Event.Hblank);
             }
 
-            Renderer.DisableBlending();
+            GLRenderBackend.DisableBlending();
             //Probably more window reset stuff
         }
 
