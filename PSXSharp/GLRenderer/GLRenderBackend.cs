@@ -2,6 +2,7 @@
 using PSXSharp.Peripherals.GPU;
 using PSXSharp.Shaders;
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace PSXSharp {
@@ -42,8 +43,11 @@ namespace PSXSharp {
         private static ushort TexWindowW;
         private static short DrawOffsetX = 0; //Signed 11 bits
         private static short DrawOffsetY = 0; //Signed 11 bits
-   
+
         //Constants
+        private const string VERTEX_SHADER_PATH = @"GLRenderer/Shaders/VertexShader.glsl";
+        private const string FRAGMENT_SHADER_PATH = @"GLRenderer/Shaders/FragmentShader.glsl";
+
         private const int SCREEN_FRAMEBUFFER = 0;
         private const int VRAM_WIDTH = 1024;
         private const int VRAM_HEIGHT = 512;
@@ -74,7 +78,9 @@ namespace PSXSharp {
         private static bool PreserveMaskedPixels = ((MaskBitSetting >> 1) & 1) != 0;
 
         public static void Initialize() {
-            Shader = new Shader(Shader.VertexShader, Shader.FragmentShader);
+            string vertexShader = File.ReadAllText(VERTEX_SHADER_PATH);
+            string fragmentShader = File.ReadAllText(FRAGMENT_SHADER_PATH);
+            Shader = new Shader(vertexShader, fragmentShader);
             Shader.Use();
 
             //Get Locations
