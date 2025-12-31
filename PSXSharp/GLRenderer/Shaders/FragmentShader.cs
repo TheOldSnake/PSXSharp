@@ -173,17 +173,17 @@
          }
 
          ivec2 getColorCoord8BPP(ivec2 UV){
-            ivec2 texelCoord = ivec2(UV.x >> 1, UV.y) + texpageBase;
+             ivec2 texelCoord = ivec2(UV.x >> 1, UV.y) + texpageBase;
     
-            int clutEntry = sample16(texelCoord);
-            int shift = (UV.x & 1) << 3;
-            int clutIndex = (clutEntry >> shift) & 0xff;
+             int clutEntry = sample16(texelCoord);
+             int shift = (UV.x & 1) << 3;
+             int clutIndex = (clutEntry >> shift) & 0xff;
 
-            return ivec2(clutBase.x + clutIndex, clutBase.y);
+             return ivec2(clutBase.x + clutIndex, clutBase.y);
          }
 
          ivec2 getColorCoord16BPP(ivec2 UV){
-            return UV + texpageBase;
+             return UV + texpageBase;
          }
 
          vec4 handleTexture(){
