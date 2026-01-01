@@ -1,8 +1,32 @@
 # PSXSharp
 
-PSX# is a PlayStation 1 emulator written in C#.
+PSX# is a WIP PlayStation 1 emulator written in C#.
+This project is a personal project for the purpose of learning more about emulation development and computer architecture.
 
-The project is a personal project for the purpose of learning more about emulation development and computer architecture.
+# Showcase
+<table>
+  <tr>
+    <td align="center">
+      <img src="PSXSharp/images/shell-1.png"/><br/>
+      PSX-BIOS
+    </td>
+    <td align="center">
+      <img src="PSXSharp/images/shell-2.png"/><br/>
+      PSX-BIOS
+    </td>
+  </tr>
+
+   <tr>
+    <td align="center">
+      <img src="PSXSharp/images/crash.png"/><br/>
+      Crash Bandicoot
+    </td>
+    <td align="center">
+      <img src="PSXSharp/images/mgs.png"/><br/>
+      Metal Gear Solid
+    </td>
+  </tr>  
+</table>
 
 ## What Has Been Implemented
 
