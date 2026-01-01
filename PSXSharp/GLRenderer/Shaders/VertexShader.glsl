@@ -72,16 +72,15 @@ void main() {
     float xpos = ((float(vertixInput.x) + 0.5) / 512.0) - 1.0;
     float ypos = ((float(vertixInput.y) - 0.5) / 256.0) - 1.0;
 
-    vec2 texcoords[4];
     renderModeFrag = renderMode; //Pass rendermode 
     
     if(renderMode == RENDER_PRIM){
         //Pass the flat outs
-        gl_Position.xyzw = vec4(xpos, ypos, 0.0, 1.0); 
+        gl_Position = vec4(xpos, ypos, 0.0, 1.0); 
         texpageBase = ivec2((inTexpage & 0xF) * 64, ((inTexpage >> 4) & 0x1) * 256);
         clutBase = ivec2((inClut & 0x3F) * 16, inClut >> 6);
         texCoords = inUV;
-        vertexColor = vColors.rgb;                       
+        vertexColor = vColors;                       
         textureMode = inTextureMode;
         isDithered = inIsDithered;
         transparencyMode = inTransparencyMode;
