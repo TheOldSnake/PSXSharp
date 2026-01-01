@@ -11,18 +11,18 @@ const int TEXTURE_4BPP      =  0;
 const int TEXTURE_8BPP      =  1;
 const int TEXTURE_16BPP     =  2;
 
-// Transparency modes
-const int TRANSPARENCY_DISABLED   = -1; // (B * 0) + F
-const int TRANSPARENCY_HALF       =  0; // B/2 + F/2
-const int TRANSPARENCY_ADD        =  1; // B + F
-const int TRANSPARENCY_SUBTRACT   =  2; // B - F (hacky)
-const int TRANSPARENCY_QUARTER    =  3; // B + F/4
+//Transparency mode constants
+const int TRANSPARENCY_DISABLED           = -1; // (B * 0) + F
+const int TRANSPARENCY_HALF               =  0; // B/2 + F/2
+const int TRANSPARENCY_ADD                =  1; // B + F
+const int TRANSPARENCY_REVERSE_SUBTRACT   =  2; // B - F (hacky)
+const int TRANSPARENCY_QUARTER            =  3; // B + F/4
 
 //Blend factors based on the transparency mode
 const vec4 BLEND_ZERO        = vec4(1.0, 1.0, 1.0, 0.0);
 const vec4 BLEND_HALF        = vec4(0.5, 0.5, 0.5, 0.5);
 const vec4 BLEND_ONE         = vec4(1.0, 1.0, 1.0, 1.0);
-const vec4 BLEND_QUARTER_RGB = vec4(0.25, 0.25, 0.25, 1.0);
+const vec4 BLEND_QUARTER     = vec4(0.25, 0.25, 0.25, 1.0);
 
 //Vram texture 
 uniform sampler2D u_vramTex;
@@ -112,19 +112,19 @@ vec3 texBlend(vec3 color1, vec3 color2) {
 }
 
 vec4 handleTransparency(int textureMode, float alpha) {
-    //Non transparent pixel
+    //Non transparent pixel (bit15 = 0)
     if(textureMode != NO_TEXTURE && alpha == 0){ 
         return BLEND_ZERO; 
     } 
 
     switch (transparencyMode){
-        case TRANSPARENCY_DISABLED: return BLEND_ZERO;
-        case TRANSPARENCY_HALF: return BLEND_HALF;
-        case TRANSPARENCY_ADD: return BLEND_ONE;
-        case TRANSPARENCY_QUARTER: return BLEND_QUARTER_RGB;
+        case TRANSPARENCY_DISABLED:  return BLEND_ZERO;
+        case TRANSPARENCY_HALF:      return BLEND_HALF;
+        case TRANSPARENCY_ADD:       return BLEND_ONE;
+        case TRANSPARENCY_QUARTER:   return BLEND_QUARTER;
 
-        case TRANSPARENCY_SUBTRACT:
-            // B - F (Hack: handled manually)
+        case TRANSPARENCY_REVERSE_SUBTRACT:
+            // B - F (Hack: handle manually)
             vec4 background = sampleVRAM(getCurrentLocation());
             outputColor.rgb = background.rgb - outputColor.rgb;
             return BLEND_ZERO;
@@ -229,7 +229,7 @@ vec4 handleTexture(){
 }
 
 void main(){
-     //If we're drawing the whole vram:
+     //If we're drawing the whole vram to the screen:
      switch(renderModeFrag){
         case RENDER_VRAM_16BPP: outputColor.rgba = sampleVRAM(ivec2(texCoords)); return;
         case RENDER_VRAM_24BPP: outputColor.rgba = handle24bpp(ivec2(texCoords)); return;
