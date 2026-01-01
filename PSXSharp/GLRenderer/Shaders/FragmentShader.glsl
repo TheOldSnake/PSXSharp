@@ -66,14 +66,13 @@ vec3 dither(vec3 colors) {
     // % 4
     int x = position.x & 3;
     int y = position.y & 3;
-    int ditherOffset = int(ditheringTable[y][x]);
+    float ditherOffset = float(ditheringTable[y][x]) / 255.0; //Normalize the offset
 
-    colors = (colors * vec3(255.0)) + vec3(ditherOffset);
+    colors += vec3(ditherOffset);
 
     //Clamping to [0,255] (or [0,1]) is automatically done because 
     //the frame buffer format is of a normalized fixed-point (RGB5A1)
-
-    return colors / vec3(255.0);
+    return colors;
 }
 
 vec4 grayScale(vec4 color) {
@@ -107,7 +106,7 @@ vec3 texBlend(vec3 color1, vec3 color2) {
     //Blending formula from PSX-SPX:
     //finalChannel.rgb = (texel.rgb * vertexColour.rgb) / vec3(128.0)
 
-    const float denominator = 128.0 / 255.0;
+    const float denominator = 128.0 / 255.0;    //Normalize the denominator
     vec3 ret = (color1 * color2) / vec3(denominator);
     return ret;
 }
