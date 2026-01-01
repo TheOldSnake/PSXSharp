@@ -86,17 +86,14 @@ namespace PSXSharp {
                 int x_dst = (int)(transfare.Parameters[1] & 0x3FF);
                 int y_dst = (int)((transfare.Parameters[1] >> 16) & 0x1FF);
 
-                bool forceSetMaskBit = ((MaskBitSetting & 1) != 0);
-                bool preserveMaskedPixels = (((MaskBitSetting >> 1) & 1) != 0);
-
-                if (forceSetMaskBit) {
+                if (ForceSetMaskBit) {
                     const ushort MASK_BIT = 1 << 15;
                     for (int i = 0; i < transfare.Data.Length; i++) { transfare.Data[i] |= MASK_BIT; }
                 }
 
                 /*//Slow
                  ushort[] old = new ushort[width * height];
-                   if (preserveMaskedPixels) {
+                   if (PreserveMaskedPixels) {
                      GL.ReadPixels(x_dst, y_dst, width, height, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, old);
                      for (int i = 0; i < width * height; i++) {
                          if ((old[i] >> 15) == 1) {
