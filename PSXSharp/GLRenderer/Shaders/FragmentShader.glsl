@@ -122,7 +122,7 @@ vec3 texBlend(vec3 texColor, vec3 shadeColor) {
 
 vec4 handleTransparency(int textureMode, float alpha) {
     //Non transparent pixel (bit15 = 0)
-    if(textureMode != NO_TEXTURE && alpha <= 0){ 
+    if(textureMode != NO_TEXTURE && alpha == 0){ 
         return BLEND_ZERO; 
     } 
 
