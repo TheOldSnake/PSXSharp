@@ -41,7 +41,7 @@ namespace PSXSharp {
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
-                GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, VRAM_WIDTH, VRAM_HEIGHT, 0, PixelFormat.Bgra, PixelType.UnsignedShort1555Reversed, (IntPtr)null);
+                GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb5A1, VRAM_WIDTH, VRAM_HEIGHT, 0, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, (IntPtr)null);
             }
 
             public static void VramSync() {
