@@ -88,6 +88,14 @@ int floatToU8(float f) {
     return int(floor(f * 255.0 + 0.5));
 }
 
+ivec3 denormalizeToU5(vec3 normalizedInput){
+    return ivec3(normalizedInput * 31.0 + 0.5);
+}
+
+ivec3 denormalizeToU8(vec3 normalizedInput){
+    return ivec3(normalizedInput * 255.0 + 0.5);
+}
+
 vec4 sampleVRAM(ivec2 coords) {
     coords &= ivec2(1023, 511); //Out-of-bounds VRAM accesses should wrap
     return texelFetch(u_vramTex, coords, 0);
@@ -102,18 +110,19 @@ int sample16(ivec2 coords) {
     return r | (g << 5) | (b << 10) | msb;
 }
 
-vec3 texBlend(vec3 color1, vec3 color2) {
+vec3 texBlend(vec3 texColor, vec3 shadeColor) {
     //Blending formula from PSX-SPX:
     //finalChannel.rgb = (texel.rgb * vertexColour.rgb) / vec3(128.0)
 
-    const float denominator = 128.0 / 255.0;    //Normalize the denominator
-    vec3 ret = (color1 * color2) / vec3(denominator);
-    return ret;
+    ivec3 tex = denormalizeToU5(texColor);       //texture color is 5 BPP
+    ivec3 shade = denormalizeToU8(shadeColor);   //the input vertex color is 8 BPP  
+    vec3 ret = (tex * shade) / 128;              //integer division
+    return ret / 31.0;
 }
 
 vec4 handleTransparency(int textureMode, float alpha) {
     //Non transparent pixel (bit15 = 0)
-    if(textureMode != NO_TEXTURE && alpha == 0){ 
+    if(textureMode != NO_TEXTURE && alpha <= 0){ 
         return BLEND_ZERO; 
     } 
 
@@ -231,8 +240,8 @@ vec4 handleTexture(){
 void main(){
      //If we're drawing the whole vram to the screen:
      switch(renderModeFrag){
-        case RENDER_VRAM_16BPP: outputColor.rgba = sampleVRAM(ivec2(texCoords)); return;
-        case RENDER_VRAM_24BPP: outputColor.rgba = handle24bpp(ivec2(texCoords)); return;
+        case RENDER_VRAM_16BPP: outputColor = sampleVRAM(ivec2(texCoords)); return;
+        case RENDER_VRAM_24BPP: outputColor = handle24bpp(ivec2(texCoords)); return;
     }
      
     //Otherwise, we're drawing a primitive:

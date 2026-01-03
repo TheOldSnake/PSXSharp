@@ -75,7 +75,7 @@ namespace PSXSharp {
         //Helpers
         private static short Signed11Bits(ushort input) => (short)(((short)(input << 5)) >> 5);
         private static bool ForceSetMaskBit => (MaskBitSetting & 1) != 0;
-        private static bool PreserveMaskedPixels = ((MaskBitSetting >> 1) & 1) != 0;
+        private static bool PreserveMaskedPixels => ((MaskBitSetting >> 1) & 1) != 0;
 
         public static void Initialize() {
             string vertexShader = File.ReadAllText(VERTEX_SHADER_PATH);

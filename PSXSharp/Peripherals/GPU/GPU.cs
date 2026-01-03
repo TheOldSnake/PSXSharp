@@ -382,7 +382,8 @@ namespace PSXSharp {
         private void GP0MaskBit(uint value) {
             ForceSetMaskBit = ((value & 1) != 0);
             PreserveMaskedPixels = (((value >> 1) & 1) != 0);
-            GLRenderBackend.SetMaskBitSetting((int)value);
+            GLRenderBackend.SetMaskBitSetting((int)(value & 0x3));
+            //Console.WriteLine($"Mask bit = {value & 3:x}");
         }
 
         private void GP0TextureWindow(uint value) {
