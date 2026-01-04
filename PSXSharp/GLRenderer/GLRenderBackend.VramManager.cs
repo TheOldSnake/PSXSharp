@@ -301,34 +301,38 @@ namespace PSXSharp {
 
             public static void UpdateIntersectionTable(ReadOnlySpan<short> vertices) {
                 //Mark any affected blocks as dirty
-                int smallestX = 1023;
-                int smallestY = 511;
-                int largestX = -1024;
-                int largestY = -512;
+
+                const int VRAM_START_X  = 0;
+                const int VRAM_END_X    = 1023;
+                const int VRAM_START_Y  = 0;
+                const int VRAM_END_Y    = 511;
+
+                int minX, maxX, minY, maxY;
+                minX = maxX = vertices[0];
+                minY = maxY = vertices[1];
 
                 for (int i = 0; i < vertices.Length; i += 2) {
-                    largestX = Math.Max(largestX, vertices[i]);
-                    smallestX = Math.Min(smallestX, vertices[i]);
+                    int x = vertices[i];
+                    int y = vertices[i + 1];
+                    minX = Math.Min(minX, x);
+                    maxX = Math.Max(maxX, x);
+                    minY = Math.Min(minY, y);
+                    maxY = Math.Max(maxY, y);
                 }
 
-                for (int i = 1; i < vertices.Length; i += 2) {
-                    largestY = Math.Max(largestY, vertices[i]);
-                    smallestY = Math.Min(smallestY, vertices[i]);
-                }
+                minX = Math.Clamp(minX, VRAM_START_X, VRAM_END_X);
+                maxX = Math.Clamp(maxX, VRAM_START_X, VRAM_END_X);
+                minY = Math.Clamp(minY, VRAM_START_Y, VRAM_END_Y);
+                maxY = Math.Clamp(maxY, VRAM_START_Y, VRAM_END_Y);
 
-                smallestX = Math.Clamp(smallestX, 0, 1023);
-                smallestY = Math.Clamp(smallestY, 0, 511);
-                largestX = Math.Clamp(largestX, 0, 1023);
-                largestY = Math.Clamp(largestY, 0, 511);
-
-                int left = smallestX / IntersectionBlockLength;
-                int right = largestX / IntersectionBlockLength;
-                int up = smallestY / IntersectionBlockLength;
-                int down = largestY / IntersectionBlockLength;
+                int bounding_x1 = minX / IntersectionBlockLength;
+                int bounding_x2 = maxX / IntersectionBlockLength;
+                int bounding_y1 = minY / IntersectionBlockLength;
+                int bounding_y2 = maxY / IntersectionBlockLength;
 
                 //No access wrap for drawing, anything out of bounds is clamped 
-                for (int y = up; y <= down; y++) {
-                    for (int x = left; x <= right; x++) {
+                for (int y = bounding_y1; y <= bounding_y2; y++) {
+                    for (int x = bounding_x1; x <= bounding_x2; x++) {
                         IntersectionTable[y, x] = 1;
                     }
                 }
