@@ -1,0 +1,62 @@
+//A tiny compute shader to handle CPU -> VRAM and VRAM -> VRAM commands
+
+#version 460
+
+layout(binding = 0) uniform sampler2D tempTex;                       //Temporary texture
+layout(binding = 1) uniform sampler2D vramRead;                      //Vram texture (Read View)
+layout(binding = 2, rgba8) writeonly uniform image2D vramWrite;      //Vram texture (Write View)
+
+//Transfer type constants
+const int TRANSFER_CPU_VRAM  = 0;
+const int TRANSFER_VRAM_VRAM = 1;
+
+//Transfer type uniform
+uniform int transferType;
+
+//Source and destination rectangles uniforms
+uniform ivec2 srcRect;      //x, y
+uniform ivec2 dstRect;      //x, y
+uniform ivec2 dimensions;   //width, height
+
+//Mask bit setting uniform
+uniform int maskBitSetting;
+
+//16x16 threads per group
+layout(local_size_x = 16, local_size_y = 16) in;
+
+void main() {
+    //Get pixel coordinates inside the rectangle
+    ivec2 local = ivec2(gl_GlobalInvocationID.xy);
+
+    //Stop threads outside rectangle
+    if (local.x >= dimensions.x || local.y >= dimensions.y){
+        return;
+    }
+        
+    //Source pixel coordinate
+    ivec2 srcPixel = ivec2(srcRect.xy) + local;
+
+    //Destination pixel coordinate
+    ivec2 dstPixel = ivec2(dstRect.xy) + local;
+
+    //Fetch the color
+    vec4 color = texelFetch(transferType == TRANSFER_CPU_VRAM? tempTex : vramRead, srcPixel, 0);
+
+    //Handle mask bit setting -this is the main reason behind the compute shader-
+    bool forceBit15 = (maskBitSetting & 1) == 1;
+    bool checkOldMask = ((maskBitSetting >> 1) & 1) == 1;
+    
+    if(forceBit15){
+        color.a = 1.0;
+    }
+
+    if(checkOldMask){
+        vec4 oldPixel = texelFetch(vramRead, dstPixel, 0);
+        if(oldPixel.a > 0.0){
+            return;
+        }
+    }
+
+    //Write to vram texture
+    imageStore(vramWrite, dstPixel, color);
+}

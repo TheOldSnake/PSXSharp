@@ -1,10 +1,10 @@
 #version 460 
 
 //Current drawing mode constants
-const int RENDER_PRIM = 0;
+const int RENDER_PRIM       = 0;
 const int RENDER_VRAM_16BPP = 1;
 const int RENDER_VRAM_24BPP = 2;
- 
+
 //Per primitive settings
 layout(location = 0) in ivec2 vertixInput;
 layout(location = 1) in vec3 vColors;   //Normalized floats
@@ -25,6 +25,11 @@ flat out int isDithered;
 flat out int transparencyMode;
 flat out int maskBitSetting;
 flat out int renderModeFrag;
+
+
+//Settings for vram upload/copy
+uniform ivec4 srcRect; // (x, y, width, height)
+uniform ivec4 dstRect; // (x, y, width, height)
 
 //Settings for drawing the whole frame
 uniform int renderMode = 0;
@@ -53,7 +58,7 @@ vec4 handleAspectRatio(int id) {
     p.x *= 1.0 - aspect_ratio_x_offset;
     p.y *= 1.0 - aspect_ratio_y_offset;
 
-    return vec4(p, 1.0, 1.0);
+    return vec4(p, 0.0, 1.0);
 }
     
 vec2 handleDisplayArea(int id){
@@ -68,13 +73,13 @@ vec2 handleDisplayArea(int id){
 }
 
 void main() {
-    //Convert x from [0,1023] and y from [0,511] coords to [-1,1]
-    float xpos = ((float(vertixInput.x) + 0.5) / 512.0) - 1.0;
-    float ypos = ((float(vertixInput.y) - 0.5) / 256.0) - 1.0;
-
     renderModeFrag = renderMode; //Pass rendermode 
     
     if(renderMode == RENDER_PRIM){
+        //Convert x from [0,1023] and y from [0,511] coords to [-1,1]
+        float xpos = ((float(vertixInput.x) + 0.5) / 512.0) - 1.0;
+        float ypos = ((float(vertixInput.y) - 0.5) / 256.0) - 1.0;
+
         //Pass the flat outs
         gl_Position = vec4(xpos, ypos, 0.0, 1.0); 
         texpageBase = ivec2((inTexpage & 0xF) * 64, ((inTexpage >> 4) & 0x1) * 256);

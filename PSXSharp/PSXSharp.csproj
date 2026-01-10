@@ -49,10 +49,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="GLRenderer\Shaders\FragmentShader.glsl">
+    <None Update="GLRenderer\Shaders\FragmentShader.frag">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="GLRenderer\Shaders\VertexShader.glsl">
+    <None Update="GLRenderer\Shaders\VertexShader.vert">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="GLRenderer\Shaders\VramCopy.comp">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Properties\Settings.settings">

@@ -149,13 +149,13 @@ namespace PSXSharp {
             GL.Clear(ClearBufferMask.ColorBufferBit);  
             SwapBuffers();
 
-            Display_Area_X_Start_Loc = GL.GetUniformLocation(GLRenderBackend.ShaderHandle, "display_area_x_start");
-            Display_Area_Y_Start_Loc = GL.GetUniformLocation(GLRenderBackend.ShaderHandle, "display_area_y_start");
-            Display_Area_X_End_Loc = GL.GetUniformLocation(GLRenderBackend.ShaderHandle, "display_area_x_end");
-            Display_Area_Y_End_Loc = GL.GetUniformLocation(GLRenderBackend.ShaderHandle, "display_area_y_end");
+            Display_Area_X_Start_Loc = GL.GetUniformLocation(GLRenderBackend.MainShaderHandle, "display_area_x_start");
+            Display_Area_Y_Start_Loc = GL.GetUniformLocation(GLRenderBackend.MainShaderHandle, "display_area_y_start");
+            Display_Area_X_End_Loc = GL.GetUniformLocation(GLRenderBackend.MainShaderHandle, "display_area_x_end");
+            Display_Area_Y_End_Loc = GL.GetUniformLocation(GLRenderBackend.MainShaderHandle, "display_area_y_end");
 
-            Aspect_Ratio_X_Offset_Loc = GL.GetUniformLocation(GLRenderBackend.ShaderHandle, "aspect_ratio_x_offset");
-            Aspect_Ratio_Y_Offset_Loc = GL.GetUniformLocation(GLRenderBackend.ShaderHandle, "aspect_ratio_y_offset");
+            Aspect_Ratio_X_Offset_Loc = GL.GetUniformLocation(GLRenderBackend.MainShaderHandle, "aspect_ratio_x_offset");
+            Aspect_Ratio_Y_Offset_Loc = GL.GetUniformLocation(GLRenderBackend.MainShaderHandle, "aspect_ratio_y_offset");
 
             if (JoystickStates[0] != null) {
                 Console.WriteLine($"Controller Name: {JoystickStates[0].Name}");

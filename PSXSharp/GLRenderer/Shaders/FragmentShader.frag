@@ -27,6 +27,9 @@ const vec4 BLEND_QUARTER     = vec4(0.25, 0.25, 0.25, 1.0);
 //Vram texture 
 uniform sampler2D u_vramTex;
 
+//Texture for CPU -> VRAM uploads
+uniform sampler2D temporaryTex;
+
 //Inputs from vertex shader
 in vec3 vertexColor;
 in vec2 texCoords;
@@ -193,7 +196,7 @@ ivec2 getColorCoord4BPP(ivec2 UV){
     int clutEntry = sample16(texelCoord);
     int shift = (UV.x & 3) << 2;
     int clutIndex = (clutEntry >> shift) & 0xF;
-
+    
     return ivec2(clutBase.x + clutIndex, clutBase.y);
 }
 
@@ -223,7 +226,7 @@ vec4 handleTexture(){
         case TEXTURE_8BPP:  colorCoord = getColorCoord8BPP(UV);  break;
         case TEXTURE_16BPP: colorCoord = getColorCoord16BPP(UV); break;
     }
-        
+    
     //Fetch the color from vram
     vec4 texColor = texelFetch(u_vramTex, colorCoord, 0);
 

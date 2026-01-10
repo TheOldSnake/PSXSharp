@@ -9,7 +9,8 @@ namespace PSXSharp {
     public static partial class GLRenderBackend {
         //Shaders
         private static Shader Shader;
-        public static int ShaderHandle => Shader.Program; //This must be used after calling Initialize
+        public static int MainShaderHandle => Shader.MainProgram;        //This must be used after creating the shader
+        public static int TransferShaderHandle => Shader.ComputeProgram; //This must be used after creating the shader
 
         //Locations
         private static int VertexArrayObject;
@@ -17,7 +18,6 @@ namespace PSXSharp {
         private static int TexWindowLoc;
         private static int MaskBitSettingLoc;
         private static int RenderModeLoc;
-        private static int IsCopy;
 
         //Primitive Settings
         private readonly static int SizeOfVertexInfo = Marshal.SizeOf<VertexInfo>();
@@ -45,8 +45,9 @@ namespace PSXSharp {
         private static short DrawOffsetY = 0; //Signed 11 bits
 
         //Constants
-        private const string VERTEX_SHADER_PATH = @"GLRenderer/Shaders/VertexShader.glsl";
-        private const string FRAGMENT_SHADER_PATH = @"GLRenderer/Shaders/FragmentShader.glsl";
+        private const string VERTEX_SHADER_PATH = @"GLRenderer/Shaders/VertexShader.vert";
+        private const string FRAGMENT_SHADER_PATH = @"GLRenderer/Shaders/FragmentShader.frag";
+        private const string VRAM_COPY_SHADER_PATH = @"GLRenderer/Shaders/VramCopy.comp";
 
         private const int SCREEN_FRAMEBUFFER = 0;
         private const int VRAM_WIDTH = 1024;
@@ -66,7 +67,6 @@ namespace PSXSharp {
         }
 
         //Forward VRAM commands to the VramManager
-        public static void ReadBackTexture(int x, int y, int width, int height, ref ushort[] texData) => VramManager.ReadBackTexture(x, y, width, height, ref texData);
         public static void CpuToVramCopy(ref GPU_MemoryTransfer transfare) => VramManager.CpuToVramCopy(ref transfare);
         public static void VramToVramCopy(ref GPU_MemoryTransfer transfare) => VramManager.VramToVramCopy(ref transfare);
         public static void VramToCpuCopy(ref GPU_MemoryTransfer transfare) => VramManager.VramToCpuCopy(ref transfare);
@@ -80,14 +80,15 @@ namespace PSXSharp {
         public static void Initialize() {
             string vertexShader = File.ReadAllText(VERTEX_SHADER_PATH);
             string fragmentShader = File.ReadAllText(FRAGMENT_SHADER_PATH);
-            Shader = new Shader(vertexShader, fragmentShader);
-            Shader.Use();
+            string vramCopyShader = File.ReadAllText(VRAM_COPY_SHADER_PATH);
+
+            Shader = new Shader(vertexShader, fragmentShader, vramCopyShader);
+            GL.UseProgram(MainShaderHandle);
 
             //Get Locations
-            TexWindowLoc = GL.GetUniformLocation(Shader.Program, "u_texWindow");
-            IsCopy = GL.GetUniformLocation(Shader.Program, "isCopy");
-            MaskBitSettingLoc = GL.GetUniformLocation(Shader.Program, "maskBitSetting");
-            RenderModeLoc = GL.GetUniformLocation(Shader.Program, "renderMode");
+            TexWindowLoc = GL.GetUniformLocation(Shader.MainProgram, "u_texWindow");
+            MaskBitSettingLoc = GL.GetUniformLocation(Shader.MainProgram, "maskBitSetting");
+            RenderModeLoc = GL.GetUniformLocation(Shader.MainProgram, "renderMode");
 
             //Create VAO/VBO/Buffers and Textures
             VertexArrayObject = GL.GenVertexArray();
@@ -98,7 +99,7 @@ namespace PSXSharp {
             GL.PixelStore(PixelStoreParameter.UnpackAlignment, 2);
             GL.PixelStore(PixelStoreParameter.PackAlignment, 2);
 
-            GL.Uniform1(GL.GetUniformLocation(Shader.Program, "u_vramTex"), 0);
+            GL.Uniform1(GL.GetUniformLocation(Shader.MainProgram, "u_vramTex"), 0);
             GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);
 
             SetupVertexAttributes();
@@ -333,9 +334,10 @@ namespace PSXSharp {
             //Return if nothing was changed
             if (setting == MaskBitSetting) { return; }
 
-            //Otherwise flush and set the new values
+            //Otherwise flush and set the new values for both shader programs
             RenderBatcher.RenderBatch();
-            GL.Uniform1(MaskBitSettingLoc, setting);
+            GL.ProgramUniform1(MainShaderHandle, MaskBitSettingLoc, setting);
+            GL.ProgramUniform1(TransferShaderHandle, VramManager.MaskBitSetting_Transfer_Loc, setting);      
             MaskBitSetting = setting;
         }
 
@@ -351,7 +353,8 @@ namespace PSXSharp {
             GL.DeleteVertexArray(VertexArrayObject);
             VramManager.Destroy();
 
-            GL.DeleteProgram(Shader.Program);
+            GL.DeleteProgram(Shader.MainProgram);
+            GL.DeleteProgram(Shader.ComputeProgram);
         }
     }
 }

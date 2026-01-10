@@ -1,34 +1,71 @@
 ﻿using OpenTK.Graphics.OpenGL;
 using PSXSharp.Peripherals.GPU;
 using System;
+using System.CodeDom.Compiler;
+using System.Windows.Markup;
+using System.Windows.Media.Media3D;
+using static PSXSharp.GPU;
 
 namespace PSXSharp {
     public partial class GLRenderBackend {
         private static class VramManager {
-            private static int VramTexture;
+            private static int VramBaseTexture;
+            private static int VramReadView;
+            private static int VramWriteView;
             private static int VramFrameBuffer;
             private static int SampleTexture;
+            private static int TempTexture;
 
-            public static int VramTextureHandle => VramTexture;
-            public static int VramFBOHandle => VramTexture;
-            public static int SampleTextureHandle => VramTexture;
+            //Compute shader uniform locations
+            private static int TransfereSrcRect_Loc;
+            private static int TransfereDstRect_Loc;
+            private static int TransfereDimensions_Loc;
+            private static int TempTexture_Loc;    
+            private static int TransferType_Loc;    
+            public static int MaskBitSetting_Transfer_Loc;    
+
+            public static int VramTextureHandle => VramBaseTexture;
+            public static int VramFBOHandle => VramFrameBuffer;
+            public static int SampleTextureHandle => SampleTexture;
 
             //Texture invalidation 
             private const int IntersectionBlockLength = 64;
             private static readonly int[,] IntersectionTable = new int[VRAM_HEIGHT / IntersectionBlockLength, VRAM_WIDTH / IntersectionBlockLength];
 
+            //Transfer type constants
+            private enum TransferType {
+                TRANSFER_CPU_VRAM = 0,
+                TRANSFER_VRAM_VRAM = 1,
+            }
+
             public static void Initialize() {
-                VramTexture = GL.GenTexture();
+                VramBaseTexture = GL.GenTexture();
+                VramReadView = GL.GenTexture();
+                VramWriteView = GL.GenTexture();
                 SampleTexture = GL.GenTexture();
+                TempTexture = GL.GenTexture();
+
                 VramFrameBuffer = GL.GenFramebuffer();
 
+                TransfereSrcRect_Loc = GL.GetUniformLocation(TransferShaderHandle, "srcRect");
+                TransfereDstRect_Loc = GL.GetUniformLocation(TransferShaderHandle, "dstRect");
+                TempTexture_Loc = GL.GetUniformLocation(TransferShaderHandle, "tempTex");
+                TransferType_Loc = GL.GetUniformLocation(TransferShaderHandle, "transferType");
+                TransfereDimensions_Loc = GL.GetUniformLocation(TransferShaderHandle, "dimensions");
+                MaskBitSetting_Transfer_Loc = GL.GetUniformLocation(TransferShaderHandle, "maskBitSetting"); 
+
                 GL.Enable(EnableCap.Texture2D);
-                SetupTexture(VramTexture);
+                SetupTexture(VramBaseTexture);
                 SetupTexture(SampleTexture);
+                SetupTexture(TempTexture);
+
+                //Set the vram read/write views for the compute shader
+                CreateVramView(VramReadView);
+                CreateVramView(VramWriteView);
 
                 GL.BindTexture(TextureTarget.Texture2D, SampleTexture);
                 GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFrameBuffer);
-                GL.FramebufferTexture2D(FramebufferTarget.DrawFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, VramTexture, 0);
+                GL.FramebufferTexture2D(FramebufferTarget.DrawFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, VramBaseTexture, 0);
 
                 if (GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer) != FramebufferErrorCode.FramebufferComplete) {
                     throw new Exception("[OpenGL] Uncompleted Frame Buffer !");
@@ -41,7 +78,11 @@ namespace PSXSharp {
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
                 GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
-                GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgb5A1, VRAM_WIDTH, VRAM_HEIGHT, 0, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, (IntPtr)null);
+                GL.TexStorage2D(TextureTarget2d.Texture2D, 1, SizedInternalFormat.Rgba8, VRAM_WIDTH, VRAM_HEIGHT);
+            }
+
+            private static void CreateVramView(int textureHandle) {
+                GL.TextureView(textureHandle, TextureTarget.Texture2D, VramBaseTexture, PixelInternalFormat.Rgba8, 0, 1, 0, 1);
             }
 
             public static void VramSync() {
@@ -59,10 +100,54 @@ namespace PSXSharp {
                     }
                 }
             }
-           
-            public static void ReadBackTexture(int x, int y, int width, int height, ref ushort[] texData) {
-                GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, VramFBOHandle);
-                GL.ReadPixels(x, y, width, height, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, texData);
+
+            private static void SwitchToTransferShader() {
+                GL.UseProgram(TransferShaderHandle);                   //Switch to the compute shader to perform the transfer
+                GL.BindTextureUnit(0, TempTexture);                    //Bind tempTex to texture 0 
+                GL.BindTextureUnit(1, VramReadView);                   //Bind VramReadView to texture 1
+                GL.BindImageTexture(2, VramWriteView, 0, false, 0, TextureAccess.WriteOnly, SizedInternalFormat.Rgba8);   //Bind VramWriteView to texture 2
+            }
+
+            private static void WriteTransferUniforms(int src_x, int src_y, int dst_x, int dst_y, int width, int height, TransferType transferType) {
+                GL.Uniform2(TransfereSrcRect_Loc, src_x, src_y);
+                GL.Uniform2(TransfereDstRect_Loc, dst_x, dst_y);
+                GL.Uniform2(TransfereDimensions_Loc, width, height);
+                GL.Uniform1(TransferType_Loc, (int)transferType);
+            }
+
+            private static void DispatchTransferShader(int width, int height) {
+                //Dispatch compute shader (16x16 threads per group)
+                const int WORKGROUP_WIDTH = 16;
+                const int WORKGROUP_HEIGHT = 16;
+                int groupX = (int)Math.Ceiling((float)width / WORKGROUP_WIDTH);
+                int groupY = (int)Math.Ceiling((float)height / WORKGROUP_HEIGHT);
+                GL.DispatchCompute(groupX, groupY, 1);
+
+                //Make sure writes are visible for next rendering commands
+                GL.MemoryBarrier(MemoryBarrierFlags.TextureFetchBarrierBit | MemoryBarrierFlags.ShaderImageAccessBarrierBit);
+            }
+
+            private static void HandleTransfer(int src_x, int src_y, int dst_x, int dst_y, int width, int height, TransferType transferType, ushort[]? data = null) {
+                //Console.WriteLine($"Src ({src_x}, {src_y}) Dst ({dst_x}, {dst_y}) Size ({width}x{height})");
+                GL.Disable(EnableCap.ScissorTest);
+
+                if (transferType == TransferType.TRANSFER_CPU_VRAM) {
+                    //Upload data to the temporary texture (still using the regular program)
+                    GL.BindTexture(TextureTarget.Texture2D, TempTexture);
+                    GL.TexSubImage2D(TextureTarget.Texture2D, 0, src_x, src_y, width, height, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, data);
+                }
+
+                SwitchToTransferShader();
+                WriteTransferUniforms(src_x, src_y, dst_x, dst_y, width, height, transferType);
+                DispatchTransferShader(width, height);
+
+                //Switch back to the main shader
+                GL.UseProgram(MainShaderHandle);
+                GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFBOHandle);
+                GL.BindTexture(TextureTarget.Texture2D, SampleTexture);
+                GL.Enable(EnableCap.ScissorTest);
+                GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);
+                GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);
             }
 
             public static void VramToCpuCopy(ref GPU_MemoryTransfer transfare) {
@@ -74,7 +159,9 @@ namespace PSXSharp {
                 int x_src = (int)(transfare.Parameters[1] & 0x3FF);
                 int y_src = (int)((transfare.Parameters[1] >> 16) & 0x1FF);
 
-                ReadBackTexture(x_src, y_src, width, height, ref transfare.Data);
+                GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, VramFBOHandle);
+                GL.ReadPixels(x_src, y_src, width, height, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, transfare.Data);
+                GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFBOHandle);
             }
 
             public static void CpuToVramCopy(ref GPU_MemoryTransfer transfare) {
@@ -85,47 +172,19 @@ namespace PSXSharp {
 
                 int x_dst = (int)(transfare.Parameters[1] & 0x3FF);
                 int y_dst = (int)((transfare.Parameters[1] >> 16) & 0x1FF);
+               
+                HandleTransfer(0, 0, x_dst, y_dst, width, height, TransferType.TRANSFER_CPU_VRAM, transfare.Data);
 
-                if (ForceSetMaskBit) {
-                    const ushort MASK_BIT = 1 << 15;
-                    for (int i = 0; i < transfare.Data.Length; i++) { transfare.Data[i] |= MASK_BIT; }
-                }
-
-                /*//Slow
-                 ushort[] old = new ushort[width * height];
-                   if (PreserveMaskedPixels) {
-                     GL.ReadPixels(x_dst, y_dst, width, height, PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, old);
-                     for (int i = 0; i < width * height; i++) {
-                         if ((old[i] >> 15) == 1) {
-                             transfare.Data[i] = old[i];
-                         }
-                     }
-                 }*/
-
-                GL.Disable(EnableCap.ScissorTest);                                            //Disable scissoring
-                GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, SCREEN_FRAMEBUFFER);    //Unbind vram FBO
-                GL.BindTexture(TextureTarget.Texture2D, VramTextureHandle);                   //Bind vram as texture
-                GL.TexSubImage2D(TextureTarget.Texture2D, 0, x_dst, y_dst, width, height,     //Upload data to the vram texture
-                    PixelFormat.Rgba, PixelType.UnsignedShort1555Reversed, transfare.Data);
-                
                 //Make sure to mark the affected area as dirty
-                Span<short> rectangleCoords = stackalloc short[VERTEX_ELEMENTS * 4];
-                Rectangle.WriteRectangleCoords(x_dst, y_dst, width, height, rectangleCoords);
-                UpdateIntersectionTable(rectangleCoords);
-
-                //Rebind the vram FBO as draw, and reenable scissoring
-                GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFBOHandle);      
-                GL.Enable(EnableCap.ScissorTest);
-                GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);
+                Span<short> dst_coords = stackalloc short[VERTEX_ELEMENTS * 4];
+                Rectangle.WriteRectangleCoords(x_dst, y_dst, width, height, dst_coords);
+                UpdateIntersectionTable(dst_coords);
                 FrameUpdated = true;
             }
-
+         
             public static void VramToVramCopy(ref GPU_MemoryTransfer transfare) {
                 RenderBatcher.RenderBatch();
 
-                //This transfare should be subject to mask bit settings
-
-                //Get the dimensions
                 int width = (int)transfare.Width;
                 int height = (int)transfare.Height;
 
@@ -135,29 +194,11 @@ namespace PSXSharp {
                 int y_src = (int)((transfare.Parameters[1] >> 16) & 0x1FF);
                 int y_dst = (int)((transfare.Parameters[2] >> 16) & 0x1FF);
 
-                //Console.WriteLine($"From: {x_src}, {y_src} to {x_dst}, {y_dst} --- Width: {width} Height: {height}");
+                HandleTransfer(x_src, y_src, x_dst, y_dst, width, height, TransferType.TRANSFER_VRAM_VRAM);
 
-                //Set up the verticies
-                Span<ushort> src_coords = stackalloc ushort[VERTEX_ELEMENTS * 4];
+                //Make sure to mark the affected area as dirty
                 Span<short> dst_coords = stackalloc short[VERTEX_ELEMENTS * 4];
-                Rectangle.WriteRectangleCoords(x_src, y_src, width, height, src_coords);
                 Rectangle.WriteRectangleCoords(x_dst, y_dst, width, height, dst_coords);
-
-                //Make sure we sample from an up-to-date texture
-                if (TextureInvalidate(src_coords)) {
-                    VramSync();
-                }
-
-                //Bind GL stuff
-                GL.BindTexture(TextureTarget.Texture2D, SampleTextureHandle);
-                GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFBOHandle);
-
-                GL.CopyImageSubData(
-                    SampleTextureHandle, ImageTarget.Texture2D, 0, x_src, y_src, 0,
-                    VramTextureHandle, ImageTarget.Texture2D, 0, x_dst, y_dst, 0,
-                    width, height, 1
-                );
-
                 UpdateIntersectionTable(dst_coords);
                 FrameUpdated = true;
             }
@@ -174,6 +215,8 @@ namespace PSXSharp {
                 float r = (transfare.Parameters[0] & 0xFF) / 255.0f;
                 float g = ((transfare.Parameters[0] >> 8) & 0xFF) / 255.0f;
                 float b = ((transfare.Parameters[0] >> 16) & 0xFF) / 255.0f;
+
+                //Mask bit setting does NOT affect the Fill-VRAM command, so we can simply use GL.Clear.
 
                 GL.Viewport(0, 0, VRAM_WIDTH, VRAM_HEIGHT);
                 GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFBOHandle);
@@ -340,8 +383,11 @@ namespace PSXSharp {
 
             public static void Destroy() {
                 GL.DeleteFramebuffer(VramFrameBuffer);
-                GL.DeleteTexture(VramTexture);
+                GL.DeleteTexture(VramBaseTexture);
+                GL.DeleteTexture(VramWriteView);
+                GL.DeleteTexture(VramReadView);
                 GL.DeleteTexture(SampleTexture);
+                GL.DeleteTexture(TempTexture);
             }
         }
     }

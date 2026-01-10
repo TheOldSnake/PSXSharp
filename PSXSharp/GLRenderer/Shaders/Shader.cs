@@ -3,39 +3,46 @@ using OpenTK.Graphics.OpenGL4;
 using System;
 
 namespace PSXSharp.Shaders {
-    public partial class Shader {  
-        public int Program;
+    public class Shader {  
+        public readonly int MainProgram;
+        public readonly int ComputeProgram;
 
-        public Shader(string vert, string frag) {
-            int vertexShader = GL.CreateShader(ShaderType.VertexShader);    //Create a vertex shader and get a pointer
-            GL.ShaderSource(vertexShader, vert);                            //Bind the source code string
-            CompileShader(vertexShader);                                    //Compile and check for errors
+        public Shader(string vert, string frag, string vramTransfer) {
+            int vertexShader = GL.CreateShader(ShaderType.VertexShader);        //Create a vertex shader and get a pointer
+            GL.ShaderSource(vertexShader, vert);                                //Bind the source code string
+            CompileShader(vertexShader);                                        //Compile and check for errors
 
             int fragmentShader = GL.CreateShader(ShaderType.FragmentShader);    //Same thing for fragment shader
             GL.ShaderSource(fragmentShader, frag);
             CompileShader(fragmentShader);
 
-            //Create a program, store the pointer to it, and attach to it both shaders
-            Program = GL.CreateProgram();
-            GL.AttachShader(Program, vertexShader);
-            GL.AttachShader(Program, fragmentShader);
+            int vramTransferShader = GL.CreateShader(ShaderType.ComputeShader);     //Create a compute shader for VRAM Copy commands
+            GL.ShaderSource(vramTransferShader, vramTransfer);
+            CompileShader(vramTransferShader);
 
-            //Link the program
-            GL.LinkProgram(Program);
-            GL.GetProgram(Program, GetProgramParameterName.LinkStatus, out var code);    // Check for linking errors
-            if (code != 1) {
-                throw new Exception($"Error occurred whilst linking Program({Program})");
-            }
+            //Create the programs and attach the shaders
+            MainProgram = GL.CreateProgram();
+            ComputeProgram = GL.CreateProgram();
+
+            GL.AttachShader(MainProgram, vertexShader);
+            GL.AttachShader(MainProgram, fragmentShader);
+            GL.AttachShader(ComputeProgram, vramTransferShader);
+
+            //Link both programs
+            Link(MainProgram);
+            Link(ComputeProgram);
 
             //After linking them the indivisual shaders are not needed, they have been copied to the program
             //Clean up
-            GL.DetachShader(Program, vertexShader);
-            GL.DetachShader(Program, fragmentShader);
+            GL.DetachShader(MainProgram, vertexShader);
+            GL.DetachShader(MainProgram, fragmentShader);
+            GL.DetachShader(ComputeProgram, vramTransferShader);
             GL.DeleteShader(fragmentShader);
             GL.DeleteShader(vertexShader);
+            GL.DeleteShader(vramTransferShader);
         }
 
-        private void CompileShader(int shader) {
+        private static void CompileShader(int shader) {
             GL.CompileShader(shader);
             GL.GetShader(shader, ShaderParameter.CompileStatus, out int code);  //Check for compilation errors
             if (code != (int)All.True) {
@@ -49,8 +56,13 @@ namespace PSXSharp.Shaders {
             }
         }
 
-        public void Use() {
-            GL.UseProgram(Program);
+        private static void Link(int program) {
+            //Link the ComputeProgram
+            GL.LinkProgram(program);
+            GL.GetProgram(program, GetProgramParameterName.LinkStatus, out var code);    // Check for linking errors
+            if (code != (int)All.True) {
+                throw new Exception($"Error occurred whilst linking Program({program})");
+            }
         }
     }
 }
