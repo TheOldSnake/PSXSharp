@@ -1,10 +1,6 @@
 ﻿using OpenTK.Graphics.OpenGL;
 using PSXSharp.Peripherals.GPU;
 using System;
-using System.CodeDom.Compiler;
-using System.Windows.Markup;
-using System.Windows.Media.Media3D;
-using static PSXSharp.GPU;
 
 namespace PSXSharp {
     public partial class GLRenderBackend {
