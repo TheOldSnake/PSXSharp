@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Threading;
+using System.Runtime.InteropServices;
 using System.Windows;
 
 namespace PSXSharp {
@@ -9,10 +9,10 @@ namespace PSXSharp {
 
         [STAThread]
         static void Main(string[] args) {
-            
-            //PSX_OpenTK emu = new PSX_OpenTK();
-            Console.Title = "TTY Console";
             Console.SetWindowSize(CONSOLE_WIDTH, CONSOLE_HEIGHT);
+            Console.Title = "TTY Console";
+            Console.WriteLine($".NET Version: {Environment.Version}");
+            Console.WriteLine($"OS: {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})");
             Application app = new Application();
             app.Run(new UserInterface());    //Launch UI
             Environment.Exit(0);
