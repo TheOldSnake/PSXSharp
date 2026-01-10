@@ -90,11 +90,7 @@ namespace PSXSharp {
                 GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramFBOHandle);
 
                 //Reset all blocks to clean
-                for (int i = 0; i < VRAM_WIDTH / IntersectionBlockLength; i++) {
-                    for (int j = 0; j < VRAM_HEIGHT / IntersectionBlockLength; j++) {
-                        IntersectionTable[j, i] = 0;
-                    }
-                }
+                Array.Clear(IntersectionTable, 0, IntersectionTable.Length);
             }
 
             private static void SwitchToTransferShader() {
