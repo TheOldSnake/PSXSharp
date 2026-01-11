@@ -6,10 +6,10 @@ namespace PSXSharp.Core {
         public abstract void TickFrame();
         public abstract void SetInvalidAllRAMBlocks();
         public abstract void SetInvalidAllBIOSBlocks();
-
         public abstract void SetInvalidRAMBlock(uint block);
         public abstract double GetSpeed();
         public abstract ulong GetCurrentCycle();
+        public abstract uint GetPC();
         public ref BUS GetBUS();
 
         //R3000 Registers

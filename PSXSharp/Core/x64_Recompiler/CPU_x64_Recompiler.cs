@@ -56,6 +56,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         static bool IsLoadingEXE;
         static string? EXEPath;
+        public uint GetPC() => CPU_Struct_Ptr ->PC;
 
         private CPU_x64_Recompiler(bool isEXE, string? executablePath, BUS bus) {
             BUS = bus;

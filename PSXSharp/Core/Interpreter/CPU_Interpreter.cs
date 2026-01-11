@@ -90,6 +90,7 @@ namespace PSXSharp.Core.Interpreter {
         Instruction CurrentInstruction = new Instruction();
         bool IsReadingFromBIOS => BUS.BIOS.range.Contains(BUS.Mask(PC));
 
+        public uint GetPC() => PC;
         public CPU_Interpreter(bool isEXE, string? EXEPath, BUS bus) {
             PC = 0xbfc00000;                   //BIOS initial PC       
             Next_PC = PC + 4;

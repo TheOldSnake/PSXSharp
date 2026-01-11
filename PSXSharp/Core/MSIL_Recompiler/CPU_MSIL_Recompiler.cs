@@ -81,6 +81,7 @@ namespace PSXSharp {
         public const uint RAM_SIZE = 2 * 1024 * 1024;    //2 MB
 
         bool IsReadingFromBIOS => (PC & 0x1FFFFFFF) >= BIOS_START;
+        public uint GetPC() => PC;
 
         public CPU_MSIL_Recompiler(bool isEXE, string? EXEPath, BUS bus) {
             PC = 0xbfc00000;                   //BIOS initial PC       
