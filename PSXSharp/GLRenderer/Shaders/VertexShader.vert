@@ -26,11 +26,6 @@ flat out int transparencyMode;
 flat out int maskBitSetting;
 flat out int renderModeFrag;
 
-
-//Settings for vram upload/copy
-uniform ivec4 srcRect; // (x, y, width, height)
-uniform ivec4 dstRect; // (x, y, width, height)
-
 //Settings for drawing the whole frame
 uniform int renderMode = 0;
 
