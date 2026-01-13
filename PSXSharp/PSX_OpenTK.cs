@@ -15,6 +15,7 @@ using Keys = OpenTK.Windowing.GraphicsLibraryFramework.Keys;
 
 namespace PSXSharp {
     public class PSX_OpenTK {
+        private static bool IsUncapped = false;
         public PSX_OpenTK(string? biosPath, string? bootPath, bool isBootingEXE) {
             //Disable CheckForMainThread to allow running from a secondary thread
             GLFWProvider.CheckForMainThread = false;
@@ -29,8 +30,9 @@ namespace PSXSharp {
             nativeWindowSettings.Location = AtCenterOfScreen(nativeWindowSettings.Size);
 
             var Gws = GameWindowSettings.Default;
-            Gws.RenderFrequency = 00;   
-            Gws.UpdateFrequency = 00;
+            int fps = IsUncapped ? 00 : 60;
+            Gws.RenderFrequency = fps;   
+            Gws.UpdateFrequency = fps;
 
             EmulatorWindow mainWindow = new EmulatorWindow(Gws, nativeWindowSettings);
             mainWindow.VSync = VSyncMode.Off;
