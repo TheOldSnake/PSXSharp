@@ -176,23 +176,17 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             uint cyclesPerInstruction;
             x64CacheBlock currentBlock;
-            ReadOnlySpan<byte> rawMemory;
-            ReadOnlySpan<uint> instructionMemory;
 
             if (isBios) {
                 cyclesPerInstruction = 22;
                 currentBlock = BIOS_CacheBlocks[block];
-                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.GetMemoryReference()).Slice((int)(maskedAddress - BIOS_START));
-                instructionMemory = MemoryMarshal.Cast<byte, uint>(rawMemory);
             } else {
                 cyclesPerInstruction = 2;
                 currentBlock = RAM_CacheBlocks[block];
-                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice(maskedAddress);
-                instructionMemory = MemoryMarshal.Cast<byte, uint>(rawMemory);
             }
 
             currentBlock.Address = CPU_Struct_Ptr->PC;
-            Recompile(currentBlock, instructionMemory, cyclesPerInstruction);
+            Recompile(currentBlock, cyclesPerInstruction);
 
             //After compilation we need to clear our actual CPU cache for that address
             FlushInstructionCache(ProcessHandle, (nint)currentBlock.FunctionPointer, (nuint)currentBlock.SizeOfAllocatedBytes);
@@ -200,6 +194,20 @@ namespace PSXSharp.Core.x64_Recompiler {
             //Console.WriteLine("Running after compilation " + CPU_Struct_Ptr->PC.ToString("x"));
             //Return the address to be called in asm
             return currentBlock.FunctionPointer;
+        }
+
+       public static ReadOnlySpan<uint> GetInstructionMemory(uint address) {
+            ReadOnlySpan<byte> rawMemory;
+            address &= 0x1FFFFFFF;
+            bool isBios = address >= BIOS_START;
+
+            if (isBios) {
+                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.GetMemoryReference()).Slice((int)(address - BIOS_START));
+            } else {
+                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice((int)address);
+            }
+
+            return MemoryMarshal.Cast<byte, uint>(rawMemory);
         }
 
         public void SetInvalidAllRAMBlocks() {
@@ -226,13 +234,14 @@ namespace PSXSharp.Core.x64_Recompiler {
             //middle of a function then jumps to the beginning
         }
 
-        private static void Recompile(x64CacheBlock cacheBlock, ReadOnlySpan<uint> instructionsSpan, uint cyclesPerInstruction) {
+        private static void Recompile(x64CacheBlock cacheBlock, uint cyclesPerInstruction) {
             Instruction instruction = new Instruction();
             Assembler emitter = new Assembler(64);
             Label endOfBlock = emitter.CreateLabel();
             bool shouldEnd = false;
             int instructionIndex = 0;
             int loadDelayCounter = 0;
+            ReadOnlySpan<uint> instructionsSpan = GetInstructionMemory(cacheBlock.Address);
             x64_JIT.IsFirstInstruction = true;
 
             x64_JIT.EmitBlockEntry(emitter);
@@ -324,6 +333,11 @@ namespace PSXSharp.Core.x64_Recompiler {
                 address &= ((1 << 21) - 1); // % 2MB 
             }
             return address >> 2;
+        }
+
+        private static uint GetJumpTarget(uint PC, Instruction instruction) {
+            uint target = (PC & 0xf0000000) | (instruction.JumpImm << 2);
+            return target;
         }
 
         private static bool IsJumpOrBranch(Instruction instruction) {
