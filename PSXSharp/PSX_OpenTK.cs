@@ -29,8 +29,8 @@ namespace PSXSharp {
             nativeWindowSettings.Location = AtCenterOfScreen(nativeWindowSettings.Size);
 
             var Gws = GameWindowSettings.Default;
-            Gws.RenderFrequency = 60;   
-            Gws.UpdateFrequency = 60;
+            Gws.RenderFrequency = 00;   
+            Gws.UpdateFrequency = 00;
 
             EmulatorWindow mainWindow = new EmulatorWindow(Gws, nativeWindowSettings);
             mainWindow.VSync = VSyncMode.Off;

@@ -23,6 +23,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         public static CPUNativeStruct* CPU_Struct_Ptr;
         public const uint RESET_VECTOR = 0xBFC00000;
         public const uint BIOS_START = 0x1FC00000;          //Reset vector but masked
+        public const uint SHELL_START = 0x80030000;         //Shell start address - we can load EXE if we reach it
         public const uint A_FunctionsTableAddress = 0xA0;   //A-Functions Table
         public const uint B_FunctionsTableAddress = 0xB0;   //B-Functions Table
         public const uint BIOS_SIZE = 512 * 1024;           //512 KB
@@ -135,15 +136,6 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public void Run() {
-            /*if (CPU_Struct_Ptr->PC == 0x80030000) {
-                if (IsLoadingEXE) {
-                    IsLoadingEXE = false;
-                    loadTestRom(EXEPath);                   
-                }
-            }
-
-            TTY(CPU_Struct_Ptr->PC);*/
-
             //Console.WriteLine("Running " + CPU_Struct_Ptr->PC.ToString("x"));
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, IsBIOSBlock);
             CurrentCache[block].FunctionPointer();
@@ -163,7 +155,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //If we need to load an EXE, this should happen here because 
             //the LoadTestRom will change the PC 
-            if (CPU_Struct_Ptr->PC == 0x80030000) {
+            if (CPU_Struct_Ptr->PC == SHELL_START) {
                 if (IsLoadingEXE) {
                     IsLoadingEXE = false;
                     LoadTestRom(EXEPath);
