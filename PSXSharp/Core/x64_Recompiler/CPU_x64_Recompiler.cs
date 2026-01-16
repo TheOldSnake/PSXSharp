@@ -45,7 +45,6 @@ namespace PSXSharp.Core.x64_Recompiler {
         public static readonly x64CacheBlock[] RAM_CacheBlocks = new x64CacheBlock[RAM_SIZE >> 2];
         x64CacheBlock[] CurrentCache => IsBIOSBlock ? BIOS_CacheBlocks : RAM_CacheBlocks;
 
-        public NativeMemoryManager MemoryManager;
         private static CPU_x64_Recompiler Instance;
 
         public static delegate* unmanaged[Stdcall]<void> StubBlockPointer;  //Stub block to call recompiler
@@ -62,7 +61,6 @@ namespace PSXSharp.Core.x64_Recompiler {
         private CPU_x64_Recompiler(bool isEXE, string? executablePath, BUS bus) {
             BUS = bus;
             GTE = new GTE();
-            MemoryManager = NativeMemoryManager.GetMemoryManager();
             IsLoadingEXE = isEXE;
             EXEPath = executablePath;
             Reset();
@@ -78,10 +76,10 @@ namespace PSXSharp.Core.x64_Recompiler {
         public void Reset() {
             CyclesDone = 0;
 
-            MemoryManager.Reset();
+            NativeMemoryManager.AllocateExecutableMemory();
 
-            CPU_Struct_Ptr = MemoryManager.GetCPUNativeStructPtr();
-            StubBlockPointer = MemoryManager.CompileStubBlock();
+            CPU_Struct_Ptr = (CPUNativeStruct*)NativeMemoryManager.AllocateNativeMemory((uint)sizeof(CPUNativeStruct));
+            StubBlockPointer = NativeMemoryManager.CompileStubBlock();
 
             CPU_Struct_Ptr->PC = RESET_VECTOR;
             CPU_Struct_Ptr->Next_PC = RESET_VECTOR + 4;
@@ -194,9 +192,9 @@ namespace PSXSharp.Core.x64_Recompiler {
             bool isBios = address >= BIOS_START;
 
             if (isBios) {
-                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.GetMemoryReference()).Slice((int)(address - BIOS_START));
+                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.NativeAddress, (int)BIOS.SIZE).Slice((int)(address - BIOS_START));
             } else {
-                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice((int)address);
+                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.NativeAddress, (int)RAM_SIZE).Slice((int)address);
             }
 
             return MemoryMarshal.Cast<byte, uint>(rawMemory);
@@ -312,8 +310,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             int endOfBlockIndex = (int)result.GetLabelRIP(endOfBlockLabel);
             Span<byte> emittedCode = new Span<byte>(stream.GetBuffer()).Slice(0, endOfBlockIndex);
 
-            NativeMemoryManager manager = NativeMemoryManager.GetMemoryManager();           //Get the instance, or make the instance static
-            block.FunctionPointer = manager.WriteExecutableBlock(ref emittedCode);
+            block.FunctionPointer = NativeMemoryManager.WriteExecutableBlock(ref emittedCode);
             block.SizeOfAllocatedBytes = emittedCode.Length;      //Update the size to the new one
         }
 
@@ -484,7 +481,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             uint addressInRAM = (uint)(EXE[0x018] | (EXE[0x018 + 1] << 8) | (EXE[0x018 + 2] << 16) | (EXE[0x018 + 3] << 24));
 
             for (int i = 0x800; i < EXE.Length; i++) {
-                BUS.StoreByte(addressInRAM, EXE[i]);
+                BUS.WriteByte(addressInRAM, EXE[i]);
                 addressInRAM++;
             }
 
@@ -520,8 +517,8 @@ namespace PSXSharp.Core.x64_Recompiler {
                             if (address == 0) {
                                 Console.Write("\\<NULL>");
                             } else {
-                                while (BUS.LoadByte(address) != 0) {
-                                    character = (char)BUS.LoadByte(address);
+                                while (BUS.ReadByte(address) != 0) {
+                                    character = (char)BUS.ReadByte(address);
                                     Console.Write(character);
                                     address++;
                                 }
@@ -543,8 +540,8 @@ namespace PSXSharp.Core.x64_Recompiler {
                             if (address == 0) {
                                 Console.Write("\\<NULL>");
                             } else {
-                                while (BUS.LoadByte(address) != 0) {
-                                    character = (char)BUS.LoadByte(address);
+                                while (BUS.ReadByte(address) != 0) {
+                                    character = (char)BUS.ReadByte(address);
                                     Console.Write(character);
                                     address++;
                                 }
@@ -573,8 +570,8 @@ namespace PSXSharp.Core.x64_Recompiler {
                     if (address == 0) {
                         Console.Write("\\<NULL>");
                     } else {
-                        while (BUS.LoadByte(address) != 0) {
-                            character = (char)BUS.LoadByte(address);
+                        while (BUS.ReadByte(address) != 0) {
+                            character = (char)BUS.ReadByte(address);
                             Console.Write(character);
                             address++;
                         }
@@ -597,8 +594,8 @@ namespace PSXSharp.Core.x64_Recompiler {
                     if (address == 0) {
                         Console.Write("\\<NULL>");
                     } else {
-                        while (BUS.LoadByte(address) != 0) {
-                            character = (char)BUS.LoadByte(address);
+                        while (BUS.ReadByte(address) != 0) {
+                            character = (char)BUS.ReadByte(address);
                             Console.Write(character);
                             address++;
                         }
@@ -609,32 +606,32 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static byte BUSReadByteWrapper(uint address) {
-            return BUS.LoadByte(address);
+            return BUS.ReadByte(address);
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static ushort BUSReadHalfWrapper(uint address) {
-            return BUS.LoadHalf(address);
+            return BUS.ReadHalf(address);
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static uint BUSReadWordWrapper(uint address) {
-            return BUS.LoadWord(address);
+            return BUS.ReadWord(address);
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static void BUSWriteByteWrapper(uint address, byte value) {
-            BUS.StoreByte(address, value);
+            BUS.WriteByte(address, value);
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static void BUSWriteHalfWrapper(uint address, ushort value) {
-            BUS.StoreHalf(address, value);
+            BUS.WriteHalf(address, value);
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
         public static void BUSWriteWordWrapper(uint address, uint value) {
-            BUS.StoreWord(address, value);
+            BUS.WriteWord(address, value);
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
@@ -671,10 +668,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             if (!disposed) {
                 if (disposing) {
                     //Free managed objects
-                    //Memory manager will handle freeing CPU_Struct_Ptr and the executable memory
-                    MemoryManager.Dispose();
-                    MemoryManager = null;
-
+                    //Unlink everything
                     foreach (x64CacheBlock block in BIOS_CacheBlocks) {
                         block.FunctionPointer = null;
                     }

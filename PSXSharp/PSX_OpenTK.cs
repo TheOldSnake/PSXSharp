@@ -15,7 +15,7 @@ using Keys = OpenTK.Windowing.GraphicsLibraryFramework.Keys;
 
 namespace PSXSharp {
     public class PSX_OpenTK {
-        private static bool IsUncapped = false;
+        private static bool IsUncapped = true;
         public PSX_OpenTK(string? biosPath, string? bootPath, bool isBootingEXE) {
             //Disable CheckForMainThread to allow running from a secondary thread
             GLFWProvider.CheckForMainThread = false;
@@ -45,7 +45,6 @@ namespace PSXSharp {
             Scratchpad Scratchpad = new Scratchpad();
             CD_ROM cdrom = isBootingEXE? new CD_ROM() : new CD_ROM(bootPath, false);
             SPU Spu = new SPU(ref cdrom.DataController);         //Needs to read CD-Audio
-            DMA Dma = new DMA();
             JOY JOY_IO = new JOY();
             SIO1 SerialIO1 = new SIO1();
             MemoryControl MemoryControl = new MemoryControl();   //useless ?
@@ -60,7 +59,7 @@ namespace PSXSharp {
             GPU Gpu = new GPU(ref Timer0, ref Timer1);
 
             BUS Bus = new BUS(          
-                Bios,Ram,Scratchpad,cdrom,Spu,Dma,
+                Bios,Ram,Scratchpad,cdrom,Spu,
                 JOY_IO, SerialIO1, MemoryControl,RamSize,CacheControl,
                 Ex1,Ex2,Timer0,Timer1,Timer2,Mdec,Gpu
             );
@@ -337,6 +336,7 @@ namespace PSXSharp {
 
         protected override void OnUnload() {
             CPUWrapper.DisposeCPU();
+            NativeMemoryManager.ResetMemory();
             GLRenderBackend.Destroy();
             base.OnUnload();
             Instance = null;

@@ -1,14 +1,11 @@
-﻿using ABI.Windows.Devices.PointOfService;
-using PSXSharp.Core;
+﻿using PSXSharp.Core;
 using PSXSharp.Peripherals.IO;
 using PSXSharp.Peripherals.MDEC;
 using PSXSharp.Peripherals.Timers;
 using System;
-using System.Collections.Generic;
-using Windows.ApplicationModel.Activation;
 
 namespace PSXSharp {
-    public class BUS {      //Main BUS, connects the CPU to everything
+    public unsafe class BUS {      //Main BUS, connects the CPU to everything
         public BIOS BIOS;
         public MemoryControl MemoryControl;
         public RAM_SIZE RamSize;
@@ -29,24 +26,41 @@ namespace PSXSharp {
         public Scratchpad Scratchpad;
         public MacroblockDecoder MDEC;
         private uint[] RegionMask = { 
-                    // KUSEG: 2048MB
-                       0xffffffff, 0xffffffff, 0xffffffff , 0xffffffff,
-                    // KSEG0: 512MB
-                       0x7fffffff,
-                    // KSEG1: 512MB
-                       0x1fffffff,
-                    // KSEG2: 1024MB
-                       0xffffffff, 0xffffffff
+            //KUSEG: 2048MB
+            0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+            //KSEG0: 512MB
+            0x7FFFFFFF,
+            //KSEG1: 512MB
+            0x1FFFFFFF,
+            //KSEG2: 1024MB
+            0xFFFFFFFF, 0xFFFFFFFF
         };
+
         const double GPU_FACTOR = ((double)715909) / 451584;
         public bool debug = false;
 
         public uint BUS_Cycles = 0;
         Action Callback;
 
+        //Paging constants for a 64-KB pages
+        private const int PAGE_SHIFT = 16;                     //16-bits for 64-KB
+        private const int PAGE_COUNT = 1 << (32 - PAGE_SHIFT); //Total number of pages in a 32-bit address space
+        private const int PAGE_SIZE = 1 << PAGE_SHIFT;         //Size of each page in bytes
+        private const int PAGE_OFFSET_MASK = PAGE_SIZE - 1;    //Mask to extract offset within a page
+
+        //Size (in bytes) of a full page table where each entry is a pointer-sized value
+        private readonly uint PageTableSizeBytes = (uint)(PAGE_SIZE * nuint.Size);
+
+        //Pointers to pointers, certified C moment.
+        private readonly byte** ReadPageTable;
+        private readonly byte** WritePageTable;
+
+        //Scratchpad is only accessable via KUSEG and KSEG0
+        public bool IsScratchPad(uint page, uint offset) => (page == 0x1F80 || page == 0x9F80) && offset < 0x400;
+
         public BUS(
             BIOS BIOS, RAM RAM, Scratchpad Scratchpad,
-            CD_ROM CDROM, SPU SPU, DMA DMA, JOY JOY_IO,SIO1 SIO1, MemoryControl MemCtrl, 
+            CD_ROM CDROM, SPU SPU, JOY JOY_IO, SIO1 SIO1, MemoryControl MemCtrl,
             RAM_SIZE RamSize, CACHECONTROL CacheControl, Expansion1 Ex1, Expansion2 Ex2,
             Timer0 Timer0, Timer1 Timer1, Timer2 Timer2, MacroblockDecoder MDEC, GPU GPU) {
             this.BIOS = BIOS;
@@ -54,7 +68,7 @@ namespace PSXSharp {
             this.Scratchpad = Scratchpad;
             this.CDROM = CDROM;
             this.SPU = SPU;
-            this.DMA = DMA;
+            this.DMA = new DMA(HandleDMA, HandleDMALinkedList);
             this.JOY_IO = JOY_IO;
             this.SerialIO1 = SIO1;
             this.MemoryControl = MemCtrl;       //useless ?
@@ -68,83 +82,179 @@ namespace PSXSharp {
             this.MDEC = MDEC;
             this.GPU = GPU;
             Callback = DMAIRQ;
+
+            ReadPageTable = (byte**)NativeMemoryManager.AllocateNativeMemory(PageTableSizeBytes);
+            WritePageTable = (byte**)NativeMemoryManager.AllocateNativeMemory(PageTableSizeBytes);
+            InitlizeFastmem();
         }
 
-        public uint LoadWord(uint address) {           
-            uint physicalAddress = Mask(address);
-            BUS_Cycles++;
-            if (debug) Console.WriteLine("read32: " + address.ToString("X"));
+        public void InitlizeFastmem() {
+            if (ReadPageTable == null || WritePageTable == null) {
+                throw new Exception("Page table was not allocated");
+            }
+
+            //Initialize all pages to null 
+            NativeMemoryManager.FillNativeMemory(ReadPageTable, PageTableSizeBytes, 0);
+            NativeMemoryManager.FillNativeMemory(WritePageTable, PageTableSizeBytes, 0);
+
+            //Map BIOS pages (read only)
+            MapPages(BIOS.BASE_ADDRESS, BIOS.SIZE, BIOS.NativeAddress, ReadPageTable);
+
+            //Map RAM pages (read/write)
+            //The actual size is 2MB but since it's mirrored 4 times (contiguous),
+            //we map it 4 times to the same pages
+            for (uint i = 0; i < 4; i++) {
+                MapPages(RAM.BASE_ADDRESS + (i * RAM.SIZE), RAM.SIZE, RAM.NativeAddress, ReadPageTable);
+                MapPages(RAM.BASE_ADDRESS + (i * RAM.SIZE), RAM.SIZE, RAM.NativeAddress, WritePageTable);
+            }
+        }
+
+        public void MapPages(uint baseGuestAddress, uint length, byte* baseNativeAddress, byte** pageTable) {
+            uint maskesAddress = Mask(baseGuestAddress);
+            uint startPage = maskesAddress >> PAGE_SHIFT;
+            uint numberOfPages = length / PAGE_SIZE;
+            uint endPage = startPage + numberOfPages;
+
+            if (length % PAGE_SIZE != 0) {
+                throw new Exception($"Cannot map {baseGuestAddress} with length: {length} to pages of size: {PAGE_SIZE}");
+            }
+
+            string access = pageTable == ReadPageTable ? "Read" : "Write";
+            Console.WriteLine($"[Fastmem] Mapping guest: 0x{maskesAddress:X8} to host: 0x{(ulong)baseNativeAddress:X16} access = {access}");
+
+            const uint KUSEG  = 0x0000;
+            const uint KUSEG0 = 0x8000;
+            const uint KUSEG1 = 0xA000;
+            uint pageIndex = 0;
+
+            for (uint i = startPage; i < endPage; i++) {
+                pageTable[i + KUSEG]  = baseNativeAddress + (pageIndex * PAGE_SIZE);
+                pageTable[i + KUSEG0] = baseNativeAddress + (pageIndex * PAGE_SIZE);
+                pageTable[i + KUSEG1] = baseNativeAddress + (pageIndex * PAGE_SIZE);
+                pageIndex++;
+            }
+        }
+
+        public uint ReadWord(uint virtualAddress) {
+            uint page = virtualAddress >> PAGE_SHIFT;
+            byte* nativeAddress = ReadPageTable[page];
+            uint inPageOffset = virtualAddress & PAGE_OFFSET_MASK;
+
+            if (nativeAddress != null) {
+                return *(uint*)(nativeAddress + inPageOffset);
+            }
+
+            if (IsScratchPad(page, inPageOffset)) {
+                return *(uint*)(Scratchpad.NativeAddress + inPageOffset);
+            }
+
+            return ReadWordIO(virtualAddress);
+        }
+
+        public ushort ReadHalf(uint virtualAddress) {
+            uint page = virtualAddress >> PAGE_SHIFT;
+            byte* nativeAddress = ReadPageTable[page];
+            uint inPageOffset = virtualAddress & PAGE_OFFSET_MASK;
+
+            if (nativeAddress != null) {
+                return *(ushort*)(nativeAddress + inPageOffset);
+            }
+
+            if (IsScratchPad(page, inPageOffset)) {
+                return *(ushort*)(Scratchpad.NativeAddress + inPageOffset);
+            }
+
+            return ReadHalfIO(virtualAddress);
+        }
+
+        public byte ReadByte(uint virtualAddress) {
+            uint page = virtualAddress >> PAGE_SHIFT;
+            byte* nativeAddress = ReadPageTable[page];
+            uint inPageOffset = virtualAddress & PAGE_OFFSET_MASK;
+
+            if (nativeAddress != null) {
+                return *(nativeAddress + inPageOffset);
+            }
+
+            if (IsScratchPad(page, inPageOffset)) {
+                return *(Scratchpad.NativeAddress + inPageOffset);
+            }
+
+            return ReadByteIO(virtualAddress);
+        }
+
+        public void WriteWord(uint virtualAddress, uint value) {
+            uint page = virtualAddress >> PAGE_SHIFT;
+            byte* nativeAddress = WritePageTable[page];
+            uint inPageOffset = virtualAddress & PAGE_OFFSET_MASK;
+
+            if (nativeAddress != null) {
+                *(uint*)(nativeAddress + inPageOffset) = value;    //Should I invalidate the JIT block..?
+            } else if (IsScratchPad(page, inPageOffset)) {
+                *(uint*)(Scratchpad.NativeAddress + inPageOffset) = value;
+
+            } else {
+                WriteWordIO(virtualAddress, value);
+            }
+        }
+
+        public void WriteHalf(uint virtualAddress, ushort value) {
+            uint page = virtualAddress >> PAGE_SHIFT;
+            byte* nativeAddress = WritePageTable[page];
+            uint inPageOffset = virtualAddress & PAGE_OFFSET_MASK;
+
+            if (nativeAddress != null) {
+                *(ushort*)(nativeAddress + inPageOffset) = value;   //Should I invalidate the JIT block..?
+            } else if (IsScratchPad(page, inPageOffset)) {
+                *(ushort*)(Scratchpad.NativeAddress + inPageOffset) = value;
+            } else {
+                WriteHalfIO(virtualAddress, value);
+            }
+        }
+
+        public void WriteByte(uint virtualAddress, byte value) {
+            uint page = virtualAddress >> PAGE_SHIFT;
+            byte* nativeAddress = WritePageTable[page];
+            uint inPageOffset = virtualAddress & PAGE_OFFSET_MASK;
+
+            if (nativeAddress != null) {
+                *(nativeAddress + inPageOffset) = value;           //Should I invalidate the JIT block..?
+            } else if (IsScratchPad(page, inPageOffset)) {
+                *(Scratchpad.NativeAddress + inPageOffset) = value;
+            } else {
+                WriteByteIO(virtualAddress, value);
+            }
+        }
+
+        public uint ReadWordIO(uint virtualAddress) {
+            uint physicalAddress = Mask(virtualAddress);
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress):  return RAM.Read<uint>(physicalAddress);
-                case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadWord(physicalAddress);
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): return IRQ_CONTROL.Read(physicalAddress);
                 case uint when DMA.range.Contains(physicalAddress): return DMA.ReadWord(physicalAddress);
                 case uint when GPU.Range.Contains(physicalAddress): return GPU.LoadWord(physicalAddress);
                 case uint when SPU.range.Contains(physicalAddress): return SPU.LoadWord(physicalAddress);
-                case uint when Timer0.Range.Contains(physicalAddress): return Timer0.Read(physicalAddress);    
+                case uint when Timer0.Range.Contains(physicalAddress): return Timer0.Read(physicalAddress);
                 case uint when Timer1.Range.Contains(physicalAddress): return Timer1.Read(physicalAddress);
                 case uint when Timer2.Range.Contains(physicalAddress): return Timer2.Read(physicalAddress);
-                case uint when Scratchpad.range.Contains(physicalAddress): return Scratchpad.LoadWord(physicalAddress);
                 case uint when JOY_IO.Range.Contains(physicalAddress): return JOY_IO.LoadWord(physicalAddress);
                 case uint when SerialIO1.Range.Contains(physicalAddress): return SerialIO1.LoadWord(physicalAddress);
                 case uint when MemoryControl.range.Contains(physicalAddress): return MemoryControl.Read(physicalAddress);
                 case uint when MDEC.range.Contains(physicalAddress): return MDEC.Read(physicalAddress);
                 case uint when RamSize.range.Contains(physicalAddress): return RamSize.LoadWord();
-                case uint when address >= 0x1F800400 && address <= 0x1F800400 + 0xC00: return 0xFFFFFFFF;
-                case uint when address >= 0x1F801024 && address <= 0x1F801024 + 0x01C: return 0xFFFFFFFF;
-                case uint when address >= 0x1F801064 && address <= 0x1F801064 + 0x00C: return 0xFFFFFFFF;
-                case uint when address >= 0x1F801078 && address <= 0x1F801078 + 0x008: return 0xFFFFFFFF;
+                case uint when physicalAddress >= 0x1F800400 && physicalAddress <= 0x1F800400 + 0xC00: return 0xFFFFFFFF;
+                case uint when physicalAddress >= 0x1F801024 && physicalAddress <= 0x1F801024 + 0x01C: return 0xFFFFFFFF;
+                case uint when physicalAddress >= 0x1F801064 && physicalAddress <= 0x1F801064 + 0x00C: return 0xFFFFFFFF;
+                case uint when physicalAddress >= 0x1F801078 && physicalAddress <= 0x1F801078 + 0x008: return 0xFFFFFFFF;
 
-                default: throw new Exception("Unhandled LoadWord from: " + address.ToString("X"));
+                default: throw new Exception($"Unhandled LoadWord from: {physicalAddress:X8}");
             }
         }
 
-        public void StoreWord(uint address,uint value) {
-            uint physicalAddress = Mask(address);
-            BUS_Cycles++;
-            if (debug) Console.WriteLine("write32: " + address.ToString("X"));
+        public ushort ReadHalfIO(uint virtualAddress) {
+            uint physicalAddress = Mask(virtualAddress);
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): RAM.Write<uint>(physicalAddress, value); break;
-                case uint when RamSize.range.Contains(physicalAddress): RamSize.StoreWord(value); break;
-                case uint when MemoryControl.range.Contains(physicalAddress): MemoryControl.Write(physicalAddress, value); break;
-                case uint when IRQ_CONTROL.range.Contains(physicalAddress): IRQ_CONTROL.Write(physicalAddress, (ushort)value); break; //Cast? could be wrong
-                case uint when GPU.Range.Contains(physicalAddress): GPU.StoreWord(physicalAddress, value); break;
-                case uint when CacheControl.Range.Contains(physicalAddress): CacheControl.WriteWord(address, value); break;
-                case uint when Timer0.Range.Contains(physicalAddress): Timer0.Write(physicalAddress, value); break;    
-                case uint when Timer1.Range.Contains(physicalAddress): Timer1.Write(physicalAddress, value); break;
-                case uint when Timer2.Range.Contains(physicalAddress): Timer2.Write(physicalAddress, value); break;
-                case uint when Scratchpad.range.Contains(physicalAddress): Scratchpad.StoreWord(physicalAddress, value); break;
-                case uint when MDEC.range.Contains(physicalAddress): MDEC.Write(physicalAddress, value); break;
-                case uint when DMA.range.Contains(physicalAddress):
-                    DMA.StoreWord(physicalAddress, value);
-                    DMAChannel activeCH = DMA.is_active(physicalAddress);  //Handle active DMA transfer (if any)
-                    if (activeCH != null) {
-                        if (activeCH.GetSync() == ((uint)DMAChannel.Sync.LinkedList)) {
-                            HandleDMALinkedList(ref activeCH);
-                        } else {
-                            HandleDMA(ref activeCH);
-                        }
-                    }
-                    break;
-                case uint when address >= 0x1F800400 && address <= 0x1F800400 + 0xC00: break;
-                case uint when address >= 0x1F801024 && address <= 0x1F801024 + 0x01C: break;
-                case uint when address >= 0x1F801064 && address <= 0x1F801064 + 0x00C: break;
-                case uint when address >= 0x1F801078 && address <= 0x1F801078 + 0x008: break;
-
-                default: throw new Exception("Unhandled StoreWord to: " + address.ToString("X")); 
-            }
-        }
-
-        public ushort LoadHalf(uint address) {
-            uint physicalAddress = Mask(address);
-            BUS_Cycles++;
-            if(debug) Console.WriteLine("read16: " + address.ToString("X"));
-
-            switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): return RAM.Read<ushort>(physicalAddress);
-                case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadHalf(physicalAddress);
                 case uint when SPU.range.Contains(physicalAddress): return SPU.LoadHalf(physicalAddress);
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): return (ushort)IRQ_CONTROL.Read(physicalAddress);
                 case uint when DMA.range.Contains(physicalAddress): return (ushort)DMA.ReadWord(physicalAddress); //DMA only 32-bits?
@@ -153,25 +263,61 @@ namespace PSXSharp {
                 case uint when Timer2.Range.Contains(physicalAddress): return (ushort)Timer2.Read(physicalAddress);
                 case uint when JOY_IO.Range.Contains(physicalAddress): return JOY_IO.LoadHalf(physicalAddress);
                 case uint when SerialIO1.Range.Contains(physicalAddress): return SerialIO1.LoadHalf(physicalAddress);
-                case uint when Scratchpad.range.Contains(physicalAddress): return Scratchpad.LoadHalf(physicalAddress);
                 case uint when MemoryControl.range.Contains(physicalAddress): return (ushort)MemoryControl.Read(physicalAddress);
-                case uint when address >= 0x1F800400 && address <= 0x1F800400 + 0xC00: return 0xFFFF;
-                case uint when address >= 0x1F801024 && address <= 0x1F801024 + 0x01C: return 0xFFFF;
-                case uint when address >= 0x1F801064 && address <= 0x1F801064 + 0x00C: return 0xFFFF;
-                case uint when address >= 0x1F801078 && address <= 0x1F801078 + 0x008: return 0xFFFF;
+                case uint when physicalAddress >= 0x1F800400 && physicalAddress <= 0x1F800400 + 0xC00: return 0xFFFF;
+                case uint when physicalAddress >= 0x1F801024 && physicalAddress <= 0x1F801024 + 0x01C: return 0xFFFF;
+                case uint when physicalAddress >= 0x1F801064 && physicalAddress <= 0x1F801064 + 0x00C: return 0xFFFF;
+                case uint when physicalAddress >= 0x1F801078 && physicalAddress <= 0x1F801078 + 0x008: return 0xFFFF;
 
-
-                default: throw new Exception("Unhandled LoadHalf from: " + address.ToString("X"));
-            }    
+                default: throw new Exception($"Unhandled LoadHalf from: {physicalAddress:X8}");
+            }
         }
 
-        public void StoreHalf(uint address, ushort value) {
+        public byte ReadByteIO(uint virtualAddress) {
+            uint physicalAddress = Mask(virtualAddress);
+            switch (physicalAddress) {
+                case uint when CDROM.range.Contains(physicalAddress): return CDROM.LoadByte(physicalAddress);
+                case uint when DMA.range.Contains(physicalAddress): return DMA.LoadByte(physicalAddress);
+                case uint when MemoryControl.range.Contains(physicalAddress): return (byte)MemoryControl.Read(physicalAddress);
+                case uint when JOY_IO.Range.Contains(physicalAddress): return JOY_IO.LoadByte(physicalAddress);
+                case uint when SerialIO1.Range.Contains(physicalAddress): return SerialIO1.LoadByte(physicalAddress);
+                case uint when Expansion1.range.Contains(physicalAddress):
+                case uint when Expansion2.range.Contains(physicalAddress): return 0xFF;   //Ignore Expansions 1 and 2 
+                case uint when physicalAddress >= 0x1F800400 && physicalAddress <= 0x1F800400 + 0xC00: return 0xFF;
+                case uint when physicalAddress >= 0x1F801024 && physicalAddress <= 0x1F801024 + 0x01C: return 0xFF;
+                case uint when physicalAddress >= 0x1F801064 && physicalAddress <= 0x1F801064 + 0x00C: return 0xFF;
+                case uint when physicalAddress >= 0x1F801078 && physicalAddress <= 0x1F801078 + 0x008: return 0xFF;
+
+                default: throw new Exception($"Unhandled LoadByte from: {physicalAddress:X8}");
+            }
+        }
+
+        public void WriteWordIO(uint address,uint value) {
             uint physicalAddress = Mask(address);
-            BUS_Cycles++;
-            if (debug) Console.WriteLine("write16: " + address.ToString("X"));
 
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): RAM.Write<ushort>(physicalAddress, value); break;
+                case uint when RamSize.range.Contains(physicalAddress): RamSize.StoreWord(value); break;
+                case uint when MemoryControl.range.Contains(physicalAddress): MemoryControl.Write(physicalAddress, value); break;
+                case uint when IRQ_CONTROL.range.Contains(physicalAddress): IRQ_CONTROL.Write(physicalAddress, (ushort)value); break; //Cast? could be wrong
+                case uint when GPU.Range.Contains(physicalAddress): GPU.StoreWord(physicalAddress, value); break;
+                case uint when CacheControl.Range.Contains(physicalAddress): CacheControl.WriteWord(address, value); break;
+                case uint when Timer0.Range.Contains(physicalAddress): Timer0.Write(physicalAddress, value); break;    
+                case uint when Timer1.Range.Contains(physicalAddress): Timer1.Write(physicalAddress, value); break;
+                case uint when Timer2.Range.Contains(physicalAddress): Timer2.Write(physicalAddress, value); break;
+                case uint when MDEC.range.Contains(physicalAddress): MDEC.Write(physicalAddress, value); break;
+                case uint when DMA.range.Contains(physicalAddress): DMA.StoreWord(physicalAddress, value); break;
+                case uint when physicalAddress >= 0x1F800400 && physicalAddress <= 0x1F800400 + 0xC00: break;
+                case uint when physicalAddress >= 0x1F801024 && physicalAddress <= 0x1F801024 + 0x01C: break;
+                case uint when physicalAddress >= 0x1F801064 && physicalAddress <= 0x1F801064 + 0x00C: break;
+                case uint when physicalAddress >= 0x1F801078 && physicalAddress <= 0x1F801078 + 0x008: break;
+
+                default: throw new Exception($"Unhandled StoreWord to: {physicalAddress:X8}"); 
+            }
+        }
+
+        public void WriteHalfIO(uint address, ushort value) {
+            uint physicalAddress = Mask(address);
+            switch (physicalAddress) {
                 case uint when SPU.range.Contains(physicalAddress): SPU.StoreHalf(physicalAddress, value); break;
                 case uint when Timer0.Range.Contains(physicalAddress): Timer0.Write(physicalAddress, value); break;
                 case uint when Timer1.Range.Contains(physicalAddress): Timer1.Write(physicalAddress, value); break;
@@ -179,59 +325,21 @@ namespace PSXSharp {
                 case uint when IRQ_CONTROL.range.Contains(physicalAddress): IRQ_CONTROL.Write(physicalAddress, value); break;
                 case uint when JOY_IO.Range.Contains(physicalAddress): JOY_IO.StoreHalf(physicalAddress, value); break;
                 case uint when SerialIO1.Range.Contains(physicalAddress): SerialIO1.StoreHalf(physicalAddress, value); break;
-                case uint when Scratchpad.range.Contains(physicalAddress): Scratchpad.StoreHalf(physicalAddress, value); break;
                 case uint when MemoryControl.range.Contains(physicalAddress): MemoryControl.Write(physicalAddress, value); break;
-                case uint when DMA.range.Contains(physicalAddress):
-                    DMA.StoreWord(physicalAddress, value);
-                    DMAChannel activeCH = DMA.is_active(physicalAddress);  //Handle active DMA transfer (if any)
-                    if (activeCH != null) {
-                        HandleDMA(ref activeCH);
-                    }
-                    break;
+                case uint when DMA.range.Contains(physicalAddress): DMA.StoreWord(physicalAddress, value); break;
                 case 0x1f802082: Console.WriteLine("Redux-Expansion Exit code: " + value.ToString("x")); break;
-                case uint when address >= 0x1F800400 && address <= 0x1F800400 + 0xC00: break;
-                case uint when address >= 0x1F801024 && address <= 0x1F801024 + 0x01C: break;
-                case uint when address >= 0x1F801064 && address <= 0x1F801064 + 0x00C: break;
-                case uint when address >= 0x1F801078 && address <= 0x1F801078 + 0x008: break;
+                case uint when physicalAddress >= 0x1F800400 && physicalAddress <= 0x1F800400 + 0xC00: break;
+                case uint when physicalAddress >= 0x1F801024 && physicalAddress <= 0x1F801024 + 0x01C: break;
+                case uint when physicalAddress >= 0x1F801064 && physicalAddress <= 0x1F801064 + 0x00C: break;
+                case uint when physicalAddress >= 0x1F801078 && physicalAddress <= 0x1F801078 + 0x008: break;
 
-                default: throw new Exception("Unhandled StoreHalf to: " + address.ToString("X")); return;
+                default: throw new Exception($"Unhandled StoreHalf to: {physicalAddress:X8}");
             }
         }
 
-        public byte LoadByte(uint address) {
+        public void WriteByteIO(uint address, byte value) {
             uint physicalAddress = Mask(address);
-            BUS_Cycles++;
-            if (debug) Console.WriteLine("read8: " + address.ToString("X"));
-
             switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress):  return RAM.Read<byte>(physicalAddress);
-                case uint when BIOS.range.Contains(physicalAddress): return BIOS.LoadByte(physicalAddress);
-                case uint when CDROM.range.Contains(physicalAddress): return CDROM.LoadByte(physicalAddress);
-                case uint when DMA.range.Contains(physicalAddress): return DMA.LoadByte(physicalAddress);
-                case uint when MemoryControl.range.Contains(physicalAddress): return (byte)MemoryControl.Read(physicalAddress);
-                case uint when Scratchpad.range.Contains(physicalAddress): return Scratchpad.LoadByte(physicalAddress);
-                case uint when JOY_IO.Range.Contains(physicalAddress): return JOY_IO.LoadByte(physicalAddress);
-                case uint when SerialIO1.Range.Contains(physicalAddress): return SerialIO1.LoadByte(physicalAddress);
-                case uint when Expansion1.range.Contains(physicalAddress):   
-                case uint when Expansion2.range.Contains(physicalAddress): return 0xFF;   //Ignore Expansions 1 and 2 
-                case uint when address >= 0x1F800400 && address <= 0x1F800400 + 0xC00: return 0xFF;
-                case uint when address >= 0x1F801024 && address <= 0x1F801024 + 0x01C: return 0xFF;
-                case uint when address >= 0x1F801064 && address <= 0x1F801064 + 0x00C: return 0xFF;
-                case uint when address >= 0x1F801078 && address <= 0x1F801078 + 0x008: return 0xFF;
-
-                default: throw new Exception("Unhandled LoadByte from: " + address.ToString("X"));
-
-            }
-        }
-
-        public void StoreByte(uint address, byte value) {
-            uint physicalAddress = Mask(address);
-            BUS_Cycles++;
-            if (debug) Console.WriteLine("write8: " + address.ToString("X"));
-
-            switch (physicalAddress) {
-                case uint when RAM.Range.Contains(physicalAddress): RAM.Write<byte>(physicalAddress, value); break;
-                case uint when Scratchpad.range.Contains(physicalAddress): Scratchpad.StoreByte(physicalAddress, value); break;
                 case uint when CDROM.range.Contains(physicalAddress): CDROM.StoreByte(physicalAddress, value); break;
                 case uint when DMA.range.Contains(physicalAddress): DMA.StoreByte(physicalAddress, value); break;
                 case uint when JOY_IO.Range.Contains(physicalAddress): JOY_IO.StoreByte(physicalAddress, value); break;
@@ -239,12 +347,12 @@ namespace PSXSharp {
                 case uint when MemoryControl.range.Contains(physicalAddress): MemoryControl.Write(physicalAddress, value); break;
                 case uint when Expansion1.range.Contains(physicalAddress):
                 case uint when Expansion2.range.Contains(physicalAddress): break;   //Ignore Expansions 1 and 2
-                case uint when address >= 0x1F800400 && address <= 0x1F800400 + 0xC00: break;
-                case uint when address >= 0x1F801024 && address <= 0x1F801024 + 0x01C: break;
-                case uint when address >= 0x1F801064 && address <= 0x1F801064 + 0x00C: break;
-                case uint when address >= 0x1F801078 && address <= 0x1F801078 + 0x008: break;
+                case uint when physicalAddress >= 0x1F800400 && physicalAddress <= 0x1F800400 + 0xC00: break;
+                case uint when physicalAddress >= 0x1F801024 && physicalAddress <= 0x1F801024 + 0x01C: break;
+                case uint when physicalAddress >= 0x1F801064 && physicalAddress <= 0x1F801064 + 0x00C: break;
+                case uint when physicalAddress >= 0x1F801078 && physicalAddress <= 0x1F801078 + 0x008: break;
 
-                default: throw new Exception("Unhandled StoreByte to: " + address.ToString("X")); 
+                default: throw new Exception($"Unhandled StoreByte to: {physicalAddress:X8}"); 
             }           
         }
 
@@ -260,7 +368,7 @@ namespace PSXSharp {
             return physical_address;
         }
 
-        private void HandleDMALinkedList(ref DMAChannel activeCH) {     
+        private void HandleDMALinkedList(DMAChannel activeCH) {     
             DMAChannel ch = activeCH;
          
             if (ch.get_direction() == ((uint)DMAChannel.Direction.ToRam)) {
@@ -303,10 +411,10 @@ namespace PSXSharp {
             
         }
 
-        private void HandleDMA(ref DMAChannel activeCH) {
+        private void HandleDMA(DMAChannel activeCH) {
             DMAChannel ch = activeCH;
             if (activeCH.GetSync() == ((uint)DMAChannel.Sync.LinkedList)) {
-                HandleDMALinkedList(ref ch);
+                HandleDMALinkedList(ch);
                 return;
             }
 

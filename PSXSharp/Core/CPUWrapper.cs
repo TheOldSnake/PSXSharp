@@ -6,9 +6,9 @@ using System.Windows.Forms;
 
 namespace PSXSharp.Core {
     public static class CPUWrapper {
-        private static CPU CPU;
-        private static string CPUType;
-
+        private static CPU? CPU;
+        private static string? CPUType;
+        public static BUS BUS => CPU.GetBUS();
         public static CPU CreateInstance(bool isRecompiler, bool isX64, bool isBootingEXE, string bootPath, BUS bus) {
             if (CPU != null) {
                 throw new Exception("Cannot create more than one CPU");
@@ -53,6 +53,7 @@ namespace PSXSharp.Core {
                 CPU_x64_Recompiler cpu = (CPU_x64_Recompiler)CPU;
                 cpu.Dispose();
             }
+
             CPU = null;
         }
     }

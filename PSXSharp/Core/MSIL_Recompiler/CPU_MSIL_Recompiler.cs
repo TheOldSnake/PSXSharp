@@ -152,11 +152,11 @@ namespace PSXSharp {
             ReadOnlySpan<byte> rawMemory;
 
             if (isBios) {
-                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.GetMemoryReference()).Slice((int)(maskedAddress - BIOS_START));
+                rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.NativeAddress, (int)BIOS.SIZE).Slice((int)(maskedAddress - BIOS_START));
                 currentCache = BIOS_CacheBlocks;
                 cycleMultiplier = 22;
             } else {
-                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice((int)maskedAddress);
+                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.NativeAddress, (int)RAM_SIZE).Slice((int)maskedAddress);
                 currentCache = RAM_CacheBlocks;
                 cycleMultiplier = 2;
             }
@@ -233,7 +233,7 @@ namespace PSXSharp {
         private bool InvalidateRAM_Block(uint block) {  //For RAM Blocks only
             uint address = BUS.Mask(RAM_CacheBlocks[block].Address);
             uint numberOfInstructions = RAM_CacheBlocks[block].Total;
-            ReadOnlySpan<byte> rawMemory = new ReadOnlySpan<byte>(BUS.RAM.GetMemoryPointer(), (int)RAM_SIZE).Slice((int)address, (int)(numberOfInstructions * 4));
+            ReadOnlySpan<byte> rawMemory = new ReadOnlySpan<byte>(BUS.RAM.NativeAddress, (int)RAM_SIZE).Slice((int)address, (int)(numberOfInstructions * 4));
             ReadOnlySpan<uint> instructionsSpan = MemoryMarshal.Cast<byte, uint>(rawMemory);
 
             uint memoryChecksum = 0;
@@ -331,8 +331,8 @@ namespace PSXSharp {
                                 Console.Write("\\<NULL>");
                             }
                             else {
-                                while (BUS.LoadByte(address) != 0) {
-                                    character = (char)BUS.LoadByte(address);
+                                while (BUS.ReadByte(address) != 0) {
+                                    character = (char)BUS.ReadByte(address);
                                     Console.Write(character);
                                     address++;
                                 }
@@ -373,8 +373,8 @@ namespace PSXSharp {
                             }
                             else {
 
-                                while (BUS.LoadByte(address) != 0) {
-                                    character = (char)BUS.LoadByte(address);
+                                while (BUS.ReadByte(address) != 0) {
+                                    character = (char)BUS.ReadByte(address);
                                     Console.Write(character);
                                     address++;
                                 }
@@ -406,7 +406,7 @@ namespace PSXSharp {
             uint addressInRAM = (uint)(EXE[0x018] | (EXE[0x018 + 1] << 8) |  (EXE[0x018 + 2] << 16) | (EXE[0x018 + 3] << 24));
 
             for (int i = 0x800; i < EXE.Length; i++) {
-                BUS.StoreByte(addressInRAM, EXE[i]);
+                BUS.WriteByte(addressInRAM, EXE[i]);
                 addressInRAM++;
             }
          

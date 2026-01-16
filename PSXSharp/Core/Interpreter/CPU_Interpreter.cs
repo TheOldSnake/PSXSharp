@@ -88,7 +88,7 @@ namespace PSXSharp.Core.Interpreter {
         public RegisterLoad DirectWrite;       //Not memory access, will overwrite memory loads
 
         Instruction CurrentInstruction = new Instruction();
-        bool IsReadingFromBIOS => BUS.BIOS.range.Contains(BUS.Mask(PC));
+        bool IsReadingFromBIOS => BUS.BIOS.Range.Contains(BUS.Mask(PC));
 
         public uint GetPC() => PC;
         public CPU_Interpreter(bool isEXE, string? EXEPath, BUS bus) {
@@ -143,7 +143,7 @@ namespace PSXSharp.Core.Interpreter {
                 return;
             }
 
-            CurrentInstruction.Value = BUS.LoadWord(PC);    
+            CurrentInstruction.Value = BUS.ReadWord(PC);    
 
             DelaySlot = Branch;   //Branch delay 
             Branch = false;
@@ -222,8 +222,8 @@ namespace PSXSharp.Core.Interpreter {
                                 Console.Write("\\<NULL>");
                             }
                             else {
-                                while (BUS.LoadByte(address) != 0) {
-                                    character = (char)BUS.LoadByte(address);
+                                while (BUS.ReadByte(address) != 0) {
+                                    character = (char)BUS.ReadByte(address);
                                     Console.Write(character);
                                     address++;
                                 }
@@ -267,8 +267,8 @@ namespace PSXSharp.Core.Interpreter {
                             }
                             else {
 
-                                while (BUS.LoadByte(address) != 0) {
-                                    character = (char)BUS.LoadByte(address);
+                                while (BUS.ReadByte(address) != 0) {
+                                    character = (char)BUS.ReadByte(address);
                                     Console.Write(character);
                                     address++;
                                 }
@@ -321,7 +321,7 @@ namespace PSXSharp.Core.Interpreter {
             uint addressInRAM = (uint)(EXE[0x018] | EXE[0x018 + 1] << 8 |  EXE[0x018 + 2] << 16 | EXE[0x018 + 3] << 24);
 
             for (int i = 0x800; i < EXE.Length; i++) {
-                BUS.StoreByte(addressInRAM, EXE[i]);
+                BUS.WriteByte(addressInRAM, EXE[i]);
                 addressInRAM++;
             }
          
@@ -380,7 +380,7 @@ namespace PSXSharp.Core.Interpreter {
 
             uint rt = instruction.Rt;
             uint word = cpu.GTE.read(rt);
-            cpu.BUS.StoreWord(address, word);
+            cpu.BUS.WriteWord(address, word);
         }
 
         private static void swc1(CPU_Interpreter cpu, Instruction instruction) {
@@ -404,7 +404,7 @@ namespace PSXSharp.Core.Interpreter {
                 return;
             }
 
-            uint word = cpu.BUS.LoadWord(address);
+            uint word = cpu.BUS.ReadWord(address);
             uint rt = instruction.Rt;
             cpu.GTE.write(rt, word);
 
@@ -428,7 +428,7 @@ namespace PSXSharp.Core.Interpreter {
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
             uint value =  cpu.GPR[instruction.Rt];               
-            uint current_value = cpu.BUS.LoadWord((uint)(final_address & ~3));     //Last 2 bits are for alignment position only 
+            uint current_value = cpu.BUS.ReadWord((uint)(final_address & ~3));     //Last 2 bits are for alignment position only 
 
             uint finalValue;
             uint pos = final_address & 3;
@@ -441,7 +441,7 @@ namespace PSXSharp.Core.Interpreter {
                 default: throw new Exception("swl instruction error, pos:" + pos);
             }
 
-            cpu.BUS.StoreWord((uint)(final_address & ~3), finalValue);
+            cpu.BUS.WriteWord((uint)(final_address & ~3), finalValue);
         }
 
         private static void swl(CPU_Interpreter cpu, Instruction instruction) {
@@ -452,7 +452,7 @@ namespace PSXSharp.Core.Interpreter {
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
             uint value = cpu.GPR[instruction.Rt];           
-            uint current_value = cpu.BUS.LoadWord((uint)(final_address&~3));     //Last 2 bits are for alignment position only 
+            uint current_value = cpu.BUS.ReadWord((uint)(final_address&~3));     //Last 2 bits are for alignment position only 
 
             uint finalValue;
             uint pos = final_address & 3;
@@ -465,7 +465,7 @@ namespace PSXSharp.Core.Interpreter {
                 default: throw new Exception("swl instruction error, pos:" + pos);
             }
 
-            cpu.BUS.StoreWord((uint)(final_address & ~3), finalValue);
+            cpu.BUS.WriteWord((uint)(final_address & ~3), finalValue);
         }
 
         private static void lwr(CPU_Interpreter cpu, Instruction instruction) {
@@ -483,7 +483,7 @@ namespace PSXSharp.Core.Interpreter {
                 current_value = cpu.ReadyRegisterLoad.Value;                         //Bypass load delay
             }
 
-            uint word = cpu.BUS.LoadWord((uint)(final_address & ~3));     //Last 2 bits are for alignment position only 
+            uint word = cpu.BUS.ReadWord((uint)(final_address & ~3));     //Last 2 bits are for alignment position only 
             uint finalValue;
             uint pos = final_address & 3;
 
@@ -512,7 +512,7 @@ namespace PSXSharp.Core.Interpreter {
                 current_value = cpu.ReadyRegisterLoad.Value;             //Bypass load delay
             }
 
-            uint word = cpu.BUS.LoadWord((uint)(final_address&~3));     //Last 2 bits are for alignment position only 
+            uint word = cpu.BUS.ReadWord((uint)(final_address&~3));     //Last 2 bits are for alignment position only 
             uint finalValue;
             uint pos = final_address & 3;
 
@@ -591,7 +591,7 @@ namespace PSXSharp.Core.Interpreter {
             uint final_address = cpu.GPR[base_] + addressRegPos;
                
             //aligned?
-            short halfWord = (short)cpu.BUS.LoadHalf(final_address);
+            short halfWord = (short)cpu.BUS.ReadHalf(final_address);
             if ((final_address & 0x1) == 0) {
                 cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;            //Position
                 cpu.DelayedRegisterLoad.Value = (uint)halfWord;                     //Value
@@ -608,7 +608,7 @@ namespace PSXSharp.Core.Interpreter {
             uint final_address = cpu.GPR[base_] + addressRegPos;
 
             if ((final_address & 0x1) == 0) {
-                uint halfWord = cpu.BUS.LoadHalf(final_address);
+                uint halfWord = cpu.BUS.ReadHalf(final_address);
                 cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;        //Position
                 cpu.DelayedRegisterLoad.Value = halfWord;                       //Value
                
@@ -896,7 +896,7 @@ namespace PSXSharp.Core.Interpreter {
             uint addressRegPos = instruction.SignedImm;
             uint base_ = instruction.Rs;
 
-            byte byte_ = cpu.BUS.LoadByte(cpu.GPR[base_] + addressRegPos);
+            byte byte_ = cpu.BUS.ReadByte(cpu.GPR[base_] + addressRegPos);
             cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;  //Position
             cpu.DelayedRegisterLoad.Value = byte_;                     //Value        
         }
@@ -947,7 +947,7 @@ namespace PSXSharp.Core.Interpreter {
             if (cpu.IscIsolateCache) { return; }
             uint addressRegPos = instruction.SignedImm;
             uint base_ = instruction.Rs;
-            sbyte sb = (sbyte)cpu.BUS.LoadByte(cpu.GPR[base_] + addressRegPos);
+            sbyte sb = (sbyte)cpu.BUS.ReadByte(cpu.GPR[base_] + addressRegPos);
             cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;        //Position
             cpu.DelayedRegisterLoad.Value = (uint)sb;                       //Value
         }
@@ -958,7 +958,7 @@ namespace PSXSharp.Core.Interpreter {
             uint targetReg = instruction.Rt;
             uint addressRegPos = instruction.SignedImm;
             uint base_ = instruction.Rs;
-            cpu.BUS.StoreByte(cpu.GPR[base_] + addressRegPos, (byte)cpu.GPR[targetReg]);
+            cpu.BUS.WriteByte(cpu.GPR[base_] + addressRegPos, (byte)cpu.GPR[targetReg]);
         }
 
         private static void andi(CPU_Interpreter cpu,Instruction instruction) {
@@ -987,7 +987,7 @@ namespace PSXSharp.Core.Interpreter {
 
             //Address must be 16 bit aligned
             if ((final_address & 1) == 0) {
-                cpu.BUS.StoreHalf(final_address, (ushort)cpu.GPR[targetReg]);
+                cpu.BUS.WriteHalf(final_address, (ushort)cpu.GPR[targetReg]);
             }
             else {
                 Exception(cpu, (uint)CPU.Exceptions.StoreAddressError);
@@ -1041,7 +1041,7 @@ namespace PSXSharp.Core.Interpreter {
 
             //Address must be 32 bit aligned
             if ((final_address & 0x3) == 0) {
-                cpu.BUS.StoreWord(final_address, cpu.GPR[targetReg]);
+                cpu.BUS.WriteWord(final_address, cpu.GPR[targetReg]);
             }
             else {
                 Exception(cpu, (uint)CPU.Exceptions.StoreAddressError);
@@ -1058,7 +1058,7 @@ namespace PSXSharp.Core.Interpreter {
             //Address must be 32 bit aligned
             if ((final_address & 0x3) == 0) {
                  cpu.DelayedRegisterLoad.RegisterNumber = instruction.Rt;              //Position
-                 cpu.DelayedRegisterLoad.Value = cpu.BUS.LoadWord(final_address);           //Value
+                 cpu.DelayedRegisterLoad.Value = cpu.BUS.ReadWord(final_address);           //Value
             }
             else {
                 Exception(cpu, (uint)CPU.Exceptions.LoadAddressError);

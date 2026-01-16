@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Net.NetworkInformation;
 
 namespace PSXSharp {
     public class DMA {
         public Range range = new Range(0x1f801080, 0x80);
         public UInt32 control = 0x07654321;
+
+        //TODO: Refactor!
 
         //Interrupt register
         public UInt32 master_enabled;     //Bit 23
@@ -15,15 +18,21 @@ namespace PSXSharp {
 
         public DMAChannel reject = null;
 
-        public DMA() {
+        Action<DMAChannel> HandleDMABus;
+        Action<DMAChannel> HandleDMALinkedListBus;
+
+        public DMA(Action<DMAChannel> dmaHandler, Action<DMAChannel> dmaLinkedListHandler) {
          channels = new DMAChannel[7];
             for (int i = 0; i<channels.Length; i++) {
                 channels[i] = new DMAChannel();
                 channels[i].set_portnum((UInt32)i);
             }   
+
+            HandleDMABus = dmaHandler;
+            HandleDMALinkedListBus = dmaLinkedListHandler;
         }
 
-    public UInt32 ReadWord(UInt32 address) {
+        public UInt32 ReadWord(UInt32 address) {
             uint offset = address - range.start;
 
             UInt32 ch = (offset & 0x70) >> 4;           //Bits [7:5] for the channel number
@@ -92,6 +101,15 @@ namespace PSXSharp {
                     break;
 
                 default: throw new Exception("Unhandled DMA write at offset: " + address.ToString("X") + " val: " + value.ToString("X"));
+            }
+
+            DMAChannel activeCH = is_active(address);  //Handle active DMA transfer (if any)
+            if (activeCH != null) {
+                if (activeCH.GetSync() == ((uint)DMAChannel.Sync.LinkedList)) {
+                    HandleDMALinkedListBus(activeCH);
+                } else {
+                    HandleDMABus(activeCH);
+                }
             }
         }
 
