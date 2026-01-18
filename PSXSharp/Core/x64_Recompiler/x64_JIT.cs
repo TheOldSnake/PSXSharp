@@ -1252,7 +1252,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.pop(rbx);
         }
 
-        public static Span<byte> EmitStubBlock() {
+        public static ReadOnlySpan<byte> EmitStubBlock() {
             //Stub code in all non compiled blocks
             //Except rsp, only use volatile registers, otherwise we need to push/pop
             Assembler asm = new Assembler(64);
@@ -1276,12 +1276,13 @@ namespace PSXSharp.Core.x64_Recompiler {
             MemoryStream stream = new MemoryStream();
             AssemblerResult result = asm.Assemble(new StreamCodeWriter(stream), 0, BlockEncoderOptions.ReturnNewInstructionOffsets);
             int endOfBlock = (int)result.GetLabelRIP(endOfFunction);
-            Span<byte> emittedCode = new Span<byte>(stream.GetBuffer()).Slice(0, endOfBlock);
+            ReadOnlySpan<byte> emittedCode = new ReadOnlySpan<byte>(stream.GetBuffer()).Slice(0, endOfBlock);
             return emittedCode;
         }
     }
 
-    public unsafe class x64CacheBlock {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public unsafe struct x64CacheBlock {
         public uint Address;
         public uint TotalCycles;
         public int SizeOfAllocatedBytes;

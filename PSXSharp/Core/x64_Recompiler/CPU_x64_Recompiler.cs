@@ -1,34 +1,19 @@
 ﻿using Iced.Intel;
 using System;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Instruction = PSXSharp.Core.Common.Instruction;
 using Label = Iced.Intel.Label;
 
 namespace PSXSharp.Core.x64_Recompiler {
     public unsafe partial class CPU_x64_Recompiler : CPU, IDisposable {
-
-        [DllImport("kernel32.dll")]
-        private static extern bool FlushInstructionCache(IntPtr hProcess, IntPtr lpBaseAddress, UIntPtr dwSize);
-
-        [DllImport("kernel32.dll")]
-        private static extern IntPtr GetCurrentProcess();
-
-        private bool disposed = false;
-
-        public static IntPtr ProcessHandle = GetCurrentProcess();
-
+        private bool Disposed = false;
         public static CPUNativeStruct* CPU_Struct_Ptr;
         public const uint RESET_VECTOR = 0xBFC00000;
         public const uint BIOS_START = 0x1FC00000;          //Reset vector but masked
         public const uint SHELL_START = 0x80030000;         //Shell start address - we can load EXE if we reach it
         public const uint A_FunctionsTableAddress = 0xA0;   //A-Functions Table
         public const uint B_FunctionsTableAddress = 0xB0;   //B-Functions Table
-        public const uint BIOS_SIZE = 512 * 1024;           //512 KB
-        public const uint RAM_SIZE = 2 * 1024 * 1024;       //2 MB
-        public const uint RAM_SIZE_8MB = RAM_SIZE * 4;      //8 MB
 
         const uint CYCLES_PER_SECOND = 33868800;
         const uint CYCLES_PER_FRAME = CYCLES_PER_SECOND / 60;
@@ -36,18 +21,25 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         double CyclesDone = 0;
 
-        bool IsBIOSBlock => (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
-
         public static BUS BUS;
         public static GTE GTE;
 
-        public static readonly x64CacheBlock[] BIOS_CacheBlocks = new x64CacheBlock[BIOS_SIZE >> 2];
-        public static readonly x64CacheBlock[] RAM_CacheBlocks = new x64CacheBlock[RAM_SIZE >> 2];
-        x64CacheBlock[] CurrentCache => IsBIOSBlock ? BIOS_CacheBlocks : RAM_CacheBlocks;
+        private const uint BIOS_BLOCK_COUNT = BIOS.SIZE >> 2;
+        private const uint RAM_BLOCK_COUNT = RAM.SIZE >> 2;
+        private readonly uint BIOS_CacheSize = (uint)(BIOS_BLOCK_COUNT * sizeof(x64CacheBlock));
+        private readonly uint RAM_CacheSize = (uint)(RAM_BLOCK_COUNT * sizeof(x64CacheBlock));
+        private readonly uint CPU_StructSize = (uint)sizeof(CPUNativeStruct);
+
+        bool IsBIOSBlock => (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
+
+        private static x64CacheBlock* BIOS_CacheBlocks;
+        private static x64CacheBlock* RAM_CacheBlocks;
+        x64CacheBlock* CurrentCache => IsBIOSBlock ? BIOS_CacheBlocks : RAM_CacheBlocks;
 
         private static CPU_x64_Recompiler Instance;
 
-        public static delegate* unmanaged[Stdcall]<void> StubBlockPointer;  //Stub block to call recompiler
+        //Stub block to call recompiler
+        public static delegate* unmanaged[Stdcall]<void> StubBlockPointer;  
 
         //This variable probably shouldn't be that high
         private const int MAX_INSTRUCTIONS_PER_BLOCK = 100;
@@ -75,11 +67,11 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public void Reset() {
             CyclesDone = 0;
-
-            NativeMemoryManager.AllocateExecutableMemory();
-
-            CPU_Struct_Ptr = (CPUNativeStruct*)NativeMemoryManager.AllocateNativeMemory((uint)sizeof(CPUNativeStruct));
-            StubBlockPointer = NativeMemoryManager.CompileStubBlock();
+            BIOS_CacheBlocks = (x64CacheBlock*)NativeMemoryManager.AllocateNativeMemory(BIOS_CacheSize);
+            RAM_CacheBlocks = (x64CacheBlock*)NativeMemoryManager.AllocateNativeMemory(RAM_CacheSize);
+            CPU_Struct_Ptr = (CPUNativeStruct*)NativeMemoryManager.AllocateNativeMemory(CPU_StructSize);
+            StubBlockPointer = LinkStubBlock(x64_JIT.EmitStubBlock());
+            AllocateExecutableMemory();
 
             CPU_Struct_Ptr->PC = RESET_VECTOR;
             CPU_Struct_Ptr->Next_PC = RESET_VECTOR + 4;
@@ -87,14 +79,12 @@ namespace PSXSharp.Core.x64_Recompiler {
             CPU_Struct_Ptr->LO = 0xDeadBeef;
 
             //Initialize JIT cache for BIOS region
-            for (int i = 0; i < BIOS_CacheBlocks.Length; i++) {
-                BIOS_CacheBlocks[i] = new x64CacheBlock();
+            for (int i = 0; i < BIOS_BLOCK_COUNT; i++) {
                 BIOS_CacheBlocks[i].FunctionPointer = StubBlockPointer;
             }
 
             //Initialize JIT cache for RAM region
-            for (int i = 0; i < RAM_CacheBlocks.Length; i++) {
-                RAM_CacheBlocks[i] = new x64CacheBlock();
+            for (int i = 0; i < RAM_BLOCK_COUNT; i++) {
                 RAM_CacheBlocks[i].FunctionPointer = StubBlockPointer;
             }
 
@@ -137,54 +127,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             //Console.WriteLine("Running " + CPU_Struct_Ptr->PC.ToString("x"));
             uint block = GetBlockAddress(CPU_Struct_Ptr->PC, IsBIOSBlock);
             CurrentCache[block].FunctionPointer();
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static delegate* unmanaged[Stdcall]<void> StubBlockHandler() {
-            //Code to be called in all non compiled blocks
-
-            //If we end up in an invalid address
-            if ((CPU_Struct_Ptr->PC & 0x3) != 0) {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("[x64 JIT] Invalid PC!");
-                Console.ForegroundColor = ConsoleColor.Green;
-                throw new Exception();
-            }
-
-            //If we need to load an EXE, this should happen here because 
-            //the LoadTestRom will change the PC 
-            if (CPU_Struct_Ptr->PC == SHELL_START) {
-                if (IsLoadingEXE) {
-                    IsLoadingEXE = false;
-                    LoadTestRom(EXEPath);
-                }
-            }
-
-            bool isBios = (CPU_Struct_Ptr->PC & 0x1FFFFFFF) >= BIOS_START;
-            uint block = GetBlockAddress(CPU_Struct_Ptr->PC, isBios);
-            int maskedAddress = (int)(CPU_Struct_Ptr->PC & 0x1FFFFFFF);
-
-            uint cyclesPerInstruction;
-            x64CacheBlock currentBlock;
-
-            if (isBios) {
-                cyclesPerInstruction = 22;
-                currentBlock = BIOS_CacheBlocks[block];
-            } else {
-                cyclesPerInstruction = 2;
-                currentBlock = RAM_CacheBlocks[block];
-            }
-
-            currentBlock.Address = CPU_Struct_Ptr->PC;
-            Recompile(currentBlock, cyclesPerInstruction);
-
-            //After compilation we need to clear our actual CPU cache for that address
-            FlushInstructionCache(ProcessHandle, (nint)currentBlock.FunctionPointer, (nuint)currentBlock.SizeOfAllocatedBytes);
-
-            //Console.WriteLine("Running after compilation " + CPU_Struct_Ptr->PC.ToString("x"));
-            //Return the address to be called in asm
-            return currentBlock.FunctionPointer;
-        }
+        }      
 
        public static ReadOnlySpan<uint> GetInstructionMemory(uint address) {
             ReadOnlySpan<byte> rawMemory;
@@ -194,7 +137,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             if (isBios) {
                 rawMemory = new ReadOnlySpan<byte>(BUS.BIOS.NativeAddress, (int)BIOS.SIZE).Slice((int)(address - BIOS_START));
             } else {
-                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.NativeAddress, (int)RAM_SIZE).Slice((int)address);
+                rawMemory = new ReadOnlySpan<byte>(BUS.RAM.NativeAddress, (int)RAM.SIZE).Slice((int)address);
             }
 
             return MemoryMarshal.Cast<byte, uint>(rawMemory);
@@ -202,17 +145,17 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public void SetInvalidAllRAMBlocks() {
             //On FlushCache invalidate all ram blocks
-            Parallel.For(0, RAM_CacheBlocks.Length, i => {
+            for (int i = 0; i < RAM_BLOCK_COUNT; i++) {
                 RAM_CacheBlocks[i].FunctionPointer = StubBlockPointer;
-            });
+            }
             //Console.WriteLine("RAM Flushed");
         }
 
         public void SetInvalidAllBIOSBlocks() {
             //BIOS is only flushed when we're out of memory
-            Parallel.For(0, BIOS_CacheBlocks.Length, i => {
+            for (int i = 0; i < BIOS_BLOCK_COUNT; i++) {
                 BIOS_CacheBlocks[i].FunctionPointer = StubBlockPointer;
-            });
+            }
             //Console.WriteLine("BIOS Flushed");
         }
 
@@ -224,22 +167,22 @@ namespace PSXSharp.Core.x64_Recompiler {
             //middle of a function then jumps to the beginning
         }
 
-        private static void Recompile(x64CacheBlock cacheBlock, uint cyclesPerInstruction) {
+        private static void Recompile(x64CacheBlock* cacheBlock, uint cyclesPerInstruction) {
             Instruction instruction = new Instruction();
             Assembler emitter = new Assembler(64);
             Label endOfBlock = emitter.CreateLabel();
             bool shouldEnd = false;
             int instructionIndex = 0;
             int loadDelayCounter = 0;
-            ReadOnlySpan<uint> instructionsSpan = GetInstructionMemory(cacheBlock.Address);
+            ReadOnlySpan<uint> instructionsSpan = GetInstructionMemory(cacheBlock->Address);
             x64_JIT.IsFirstInstruction = true;
 
             x64_JIT.EmitBlockEntry(emitter);
 
             //Emit TTY Handlers on these addresses
-            if (cacheBlock.Address == A_FunctionsTableAddress || 
-                cacheBlock.Address == B_FunctionsTableAddress) {
-                x64_JIT.EmitTTY(emitter, cacheBlock.Address);
+            if (cacheBlock->Address == A_FunctionsTableAddress || 
+                cacheBlock->Address == B_FunctionsTableAddress) {
+                x64_JIT.EmitTTY(emitter, cacheBlock->Address);
             }
 
             for (;;) {
@@ -261,9 +204,9 @@ namespace PSXSharp.Core.x64_Recompiler {
                 //Note that syscall and break are immediate exceptions and they don't have delay slot
 
                 if (shouldEnd || instructionIndex > MAX_INSTRUCTIONS_PER_BLOCK || syscallOrBreak) {
-                    cacheBlock.TotalCycles = (uint)(instructionIndex * cyclesPerInstruction);
+                    cacheBlock->TotalCycles = (uint)(instructionIndex * cyclesPerInstruction);
                     x64_JIT.TerminateBlock(emitter, ref endOfBlock);
-                    AssembleAndLinkPointer(emitter, ref endOfBlock, ref cacheBlock);
+                    AssembleAndLink(emitter, ref endOfBlock, cacheBlock);
                     //Console.WriteLine("Compiled: " + CPU_Struct_Ptr->PC.ToString("x"));
                     return;
                 }
@@ -298,20 +241,6 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             //Update the current cycle 
             x64_JIT.EmitUpdateCurrentCycle(emitter, (int)cyclesPerInstruction);
-        }
-
-        public static void AssembleAndLinkPointer(Assembler emitter, ref Label endOfBlockLabel, ref x64CacheBlock block) {
-            MemoryStream stream = new MemoryStream();
-            AssemblerResult result = emitter.Assemble(new StreamCodeWriter(stream), 0, BlockEncoderOptions.ReturnNewInstructionOffsets);
-
-            //Trim the extra zeroes and the padding in the block by including only up to the ret instruction
-            //This works as long as there is no call instruction with the address being passed as 64 bit immediate
-            //Otherwise, the address will be inserted at the end of the block and we need to include it in the span
-            int endOfBlockIndex = (int)result.GetLabelRIP(endOfBlockLabel);
-            Span<byte> emittedCode = new Span<byte>(stream.GetBuffer()).Slice(0, endOfBlockIndex);
-
-            block.FunctionPointer = NativeMemoryManager.WriteExecutableBlock(ref emittedCode);
-            block.SizeOfAllocatedBytes = emittedCode.Length;      //Update the size to the new one
         }
 
         private static uint GetBlockAddress(uint address, bool biosBlock) {
@@ -500,6 +429,18 @@ namespace PSXSharp.Core.x64_Recompiler {
             CPU_Struct_Ptr->Next_PC = CPU_Struct_Ptr->PC + 4;
         }
 
+        //Sampled every second by timer
+        public double GetSpeed() {
+            double returnValue = (CyclesDone / CYCLES_PER_SECOND) * 100;
+            CyclesDone = 0;
+            return returnValue;
+        }
+
+        public ulong GetCurrentCycle() {
+            return CPU_Struct_Ptr->CurrentCycle;
+        }
+
+        //Unused
         private void TTY(uint pc) {
 
             switch (pc) {
@@ -552,150 +493,41 @@ namespace PSXSharp.Core.x64_Recompiler {
             }
         }
 
+        //Unused
         private static bool InstructionIsGTE(CPU_x64_Recompiler cpu) {
             return false; //Does not work with current JIT
         }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void TTYA0Handler() {
-            char character;
-            switch (CPU_Struct_Ptr->GPR[9]) {
-                case 0x3C:                       //putchar function (Prints the char in $a0)
-                    character = (char)CPU_Struct_Ptr->GPR[4];
-                    Console.Write(character);
-                    break;
-
-                case 0x3E:                        //puts function, similar to printf but differ in dealing with 0 character
-                    uint address = CPU_Struct_Ptr->GPR[4];       //address of the string is in $a0
-                    if (address == 0) {
-                        Console.Write("\\<NULL>");
-                    } else {
-                        while (BUS.ReadByte(address) != 0) {
-                            character = (char)BUS.ReadByte(address);
-                            Console.Write(character);
-                            address++;
-                        }
-                    }
-                    break;
-            }
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void TTYB0Handler() {
-            char character;
-            switch (CPU_Struct_Ptr->GPR[9]) {
-                case 0x3D:                       //putchar function (Prints the char in $a0)
-                    character = (char)CPU_Struct_Ptr->GPR[4];
-                    Console.Write(character);
-                    break;
-
-                case 0x3F:                        //puts function, similar to printf but differ in dealing with 0 character
-                    uint address = CPU_Struct_Ptr->GPR[4];       //address of the string is in $a0
-                    if (address == 0) {
-                        Console.Write("\\<NULL>");
-                    } else {
-                        while (BUS.ReadByte(address) != 0) {
-                            character = (char)BUS.ReadByte(address);
-                            Console.Write(character);
-                            address++;
-                        }
-                    }
-                    break;
-            }
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static byte BUSReadByteWrapper(uint address) {
-            return BUS.ReadByte(address);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static ushort BUSReadHalfWrapper(uint address) {
-            return BUS.ReadHalf(address);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static uint BUSReadWordWrapper(uint address) {
-            return BUS.ReadWord(address);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void BUSWriteByteWrapper(uint address, byte value) {
-            BUS.WriteByte(address, value);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void BUSWriteHalfWrapper(uint address, ushort value) {
-            BUS.WriteHalf(address, value);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void BUSWriteWordWrapper(uint address, uint value) {
-            BUS.WriteWord(address, value);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static uint GTEReadWrapper(uint rd) {
-            return GTE.read(rd);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void GTEWriteWrapper(uint rd, uint value) {
-            GTE.write(rd, value);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void GTEExecuteWrapper(uint value) {
-            GTE.execute(value);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void ExceptionWrapper(CPUNativeStruct* cpuStruct, uint cause) {
-            Exception(cpuStruct, cause);
-        }
-
-        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-        public static void Print(uint val) {
-            Console.WriteLine("[X64 Debug] " + val.ToString("x"));
-        }
-
+      
         public void Dispose() {
             Dispose(true);
             GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing) {
-            if (!disposed) {
+            if (!Disposed) {
                 if (disposing) {
                     //Free managed objects
                     //Unlink everything
-                    foreach (x64CacheBlock block in BIOS_CacheBlocks) {
-                        block.FunctionPointer = null;
+
+                    for (int i = 0; i < BIOS_BLOCK_COUNT; i++) {
+                        BIOS_CacheBlocks[i].FunctionPointer = null;
                     }
 
-                    foreach (x64CacheBlock block in RAM_CacheBlocks) {
-                        block.FunctionPointer = null;
+                    for (int i = 0; i < RAM_BLOCK_COUNT; i++) {
+                        RAM_CacheBlocks[i].FunctionPointer = null;
                     }
 
                     GTE = null;
                     Instance = null;
                 }
 
-                //Free unmanaged objects
-                CPU_Struct_Ptr = null;              //We should not call NativeMemory.Free() here.
-                disposed = true;
+                //Free unmanaged objects (note that the memory manager will call free, since it tracks the allocations)
+                CPU_Struct_Ptr = null; 
+                StubBlockPointer = null;
+                ExecutableMemoryBase = null;
+                AddressOfNextBlock = null;
+                Disposed = true;
             }
-        }
-
-        //Sampled every second by timer
-        public double GetSpeed() {
-            double returnValue = (CyclesDone / CYCLES_PER_SECOND) * 100;
-            CyclesDone = 0;
-            return returnValue;
-        }
-
-        public ulong GetCurrentCycle() {
-            return CPU_Struct_Ptr->CurrentCycle;
         }
 
         ~CPU_x64_Recompiler() {
