@@ -3,7 +3,6 @@ using PSXSharp.Core;
 using PSXSharp.Peripherals.SPU;
 using System;
 using System.Runtime.InteropServices;
-using static PSXSharp.CDROMDataController;
 using static PSXSharp.Peripherals.SPU.Voice.ADSR;
 
 namespace PSXSharp {
