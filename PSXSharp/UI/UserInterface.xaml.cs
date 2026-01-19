@@ -161,7 +161,6 @@ namespace PSXSharp {
         
         private void Boot() {
             SaveSettings();     //Save before booting to prevent losing settings if the emulator crashed
-            Console.ForegroundColor = ConsoleColor.Green;
             if (!EmulatorThread.IsAlive) {
                 EmulatorThread = new Thread(() => StartEmulator());
                 EmulatorThread.Start();
@@ -177,6 +176,7 @@ namespace PSXSharp {
 
         private void StartEmulator() {
             Console.WriteLine("Emulation Thread ID: {0}", Thread.CurrentThread.ManagedThreadId);
+            Console.ForegroundColor = ConsoleColor.Green;
             PSX_OpenTK MainEmu = new PSX_OpenTK(UserSettings.BIOSPath, BootPath, IsEXE);        /* Emulation loop starts */
             ResetBootConfig();
             GC.Collect();
