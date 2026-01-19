@@ -134,6 +134,14 @@ namespace PSXSharp {
 
             Instance = this;
 
+            ConsoleColor previousColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("OpenGL Version: " + GL.GetString(StringName.Version));
+            Console.WriteLine("OpenGL Renderer: " + GL.GetString(StringName.Renderer));
+            Console.WriteLine("Vendor: " + GL.GetString(StringName.Vendor));
+            Console.WriteLine("Shading Language: " + GL.GetString(StringName.ShadingLanguageVersion));
+            Console.ForegroundColor = previousColor;
+
             //Initialize the renderer
             GLRenderBackend.Initialize();
 
