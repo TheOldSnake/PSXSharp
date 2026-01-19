@@ -56,7 +56,6 @@ namespace PSXSharp {
         uint SPU_IRQ_Address;
 
         private int clk_counter = 0;
-        public const uint CYCLES_PER_SAMPLE = 0x300;
         byte[] outputBuffer = new byte[2048];
         int outputBufferPtr = 0;
         int sumLeft;
