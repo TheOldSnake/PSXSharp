@@ -184,7 +184,7 @@ namespace PSXSharp {
 
         private void DrawFrame() {
             GLRenderBackend.PrepareToDisplayFrame(Is24bpp);
-
+            
             //Set view port, and aspect ratio 
             GL.Viewport(0, 0, this.Size.X, this.Size.Y);
             SetAspectRatio();

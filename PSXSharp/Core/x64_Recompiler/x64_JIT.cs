@@ -53,6 +53,12 @@ namespace PSXSharp.Core.x64_Recompiler {
         private static int CurrentCycle_Offset = (int)Marshal.OffsetOf<CPUNativeStruct>(nameof(CPUNativeStruct.CurrentCycle));
         #endregion
 
+        //Experimental
+        public static uint CompileTime_CurrentPC;
+        public static uint CompileTime_PC;
+        public static uint CompileTime_NextPC;
+        //public static bool CompileTime_Branched;        
+
         //Prints a register value to the console
         //Destroys ecx!
         private static void EmitPrintReg(Assembler asm, AssemblerRegister32 src) {
@@ -202,7 +208,6 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public static void EmitBranchIf(int rs, int rt, uint imm, int type, Assembler asm) {
             Label skipBranch = asm.CreateLabel();
-
             EmitRegisterRead(asm, ecx, rs);                                 //Load GPR[rs]
 
             if (type > 1) {
@@ -237,13 +242,14 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         public static void EmitJalr(int rs, int rd, Assembler asm) {
             //Store return address in GRR[rd]
-            asm.mov(ecx, __dword_ptr[rbx + NextPCOffset]);
-            EmitRegisterWrite(asm, rd, ecx, false);
+            //asm.mov(ecx, __dword_ptr[rbx + NextPCOffset]);
+            EmitRegisterWrite(asm, rd, CompileTime_NextPC);
 
             //Jump to address in GRR[rs]
             EmitRegisterRead(asm, ecx, rs);
             asm.mov(__dword_ptr[rbx + NextPCOffset], ecx);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
+            //CompileTime_Branched = true;
         }
 
         public static void EmitJR(int rs, Assembler asm) {
@@ -251,28 +257,31 @@ namespace PSXSharp.Core.x64_Recompiler {
             EmitRegisterRead(asm, ecx, rs);
             asm.mov(__dword_ptr[rbx + NextPCOffset], ecx);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
+            //CompileTime_Branched = true;
         }
 
         public static void EmitJal(uint targetAddress, Assembler asm) {
             //Link to reg 31
-            asm.mov(ecx, __dword_ptr[rbx + NextPCOffset]);
-            EmitRegisterWrite(asm, (int)CPU.Register.ra, ecx, false);
+           // asm.mov(ecx, __dword_ptr[rbx + NextPCOffset]);
+            EmitRegisterWrite(asm, (int)CPU.Register.ra, CompileTime_NextPC);
 
             //Jump to target
             asm.mov(__dword_ptr[rbx + NextPCOffset], targetAddress);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
+            //CompileTime_Branched = true;
         }
 
         public static void EmitJump(uint targetAddress, Assembler asm) {
             //Jump to target
             asm.mov(__dword_ptr[rbx + NextPCOffset], targetAddress);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
+            //CompileTime_Branched = true;
         }
 
         public static void EmitBXX(int rs, uint imm, bool link, bool bgez, Assembler asm) {
             Label skipBranch = asm.CreateLabel();
 
-            asm.mov(r8d, __dword_ptr[rbx + NextPCOffset]);        //Save a copy of next pc
+            asm.mov(r8d, CompileTime_NextPC);        //Save a copy of next pc
             EmitRegisterRead(asm, ecx, rs);                       //Read GPR[rs]
             asm.mov(edx, 0);                                      //Load 0
             asm.cmp(ecx, edx);                                    //Compare
@@ -1178,21 +1187,22 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.add(__dword_ptr[rbx + NextPCOffset], 4);
         }
 
+        public static void EmitWUpdateRuntimePC(Assembler asm) {
+            asm.mov(__dword_ptr[rbx + CurrentPCOffset], CompileTime_CurrentPC);
+            asm.mov(__dword_ptr[rbx + PCOffset], CompileTime_PC);
+            asm.mov(__dword_ptr[rbx + NextPCOffset], CompileTime_NextPC);
+            asm.mov(__dword_ptr[rbx + BranchFlagOffset], 0);
+            asm.mov(__dword_ptr[rbx + DelaySlotOffset], 0);
+        }
+
         public static void EmitSavePC(Assembler asm) {
             //Current_PC = PC;
-            asm.mov(eax, __dword_ptr[rbx + PCOffset]);
-            asm.mov(__dword_ptr[rbx + CurrentPCOffset], eax);
+            //asm.mov(eax, __dword_ptr[rbx + PCOffset]);
+            asm.mov(__dword_ptr[rbx + CurrentPCOffset], CompileTime_CurrentPC);
         }
 
         public static void EmitUpdateCurrentCycle(Assembler asm, int addValue) {
             asm.add(__qword_ptr[rbx + CurrentCycle_Offset], addValue);
-        }
-
-        public static void EmitUpdatePC(Assembler asm, int numberOfInstructions) {
-            int offset = numberOfInstructions * 4;
-            //asm.add(__dword_ptr[rbx + CurrentPCOffset], offset - 4);
-            asm.add(__dword_ptr[rbx + PCOffset], offset);
-            asm.add(__dword_ptr[rbx + NextPCOffset], offset + 4);
         }
 
         public static void EmitBlockEntry(Assembler asm) {
@@ -1211,8 +1221,10 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitBranch(Assembler asm, uint offset) {
-            asm.add(__dword_ptr[rbx + NextPCOffset], (offset << 2) - 4);
+            uint newNextPC = (offset << 2) - 4 + CompileTime_NextPC;
+            asm.mov(__dword_ptr[rbx + NextPCOffset], newNextPC);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
+            //CompileTime_Branched = true;
         }
 
         public static void EmitTTY(Assembler asm, uint address) {

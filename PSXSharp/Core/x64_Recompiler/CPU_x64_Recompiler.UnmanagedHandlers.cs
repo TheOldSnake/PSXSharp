@@ -46,7 +46,8 @@ namespace PSXSharp.Core.x64_Recompiler {
             //After compilation we need to clear our actual CPU cache for that address
             NativeMemoryManager.FlushInstructionCache((nint)currentBlock->FunctionPointer, (nuint)currentBlock->SizeOfAllocatedBytes);
 
-            //Console.WriteLine("Running after compilation " + CPU_Struct_Ptr->PC.ToString("x"));
+            //Console.WriteLine($"Compiled: {CPU_Struct_Ptr->PC:X8}");
+
             //Return the address to be called in asm
             return currentBlock->FunctionPointer;
         }

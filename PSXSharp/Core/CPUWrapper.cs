@@ -21,7 +21,7 @@ namespace PSXSharp.Core {
                         throw new NotSupportedException();
                     }
 
-                    CPU = CPU_x64_Recompiler.GetOrCreateCPU(isBootingEXE, bootPath, bus);
+                    CPU = CPU_x64_Recompiler.GetCPU(isBootingEXE, bootPath, bus);
                     CPUType = "x64 JIT";
 
                 } else {
