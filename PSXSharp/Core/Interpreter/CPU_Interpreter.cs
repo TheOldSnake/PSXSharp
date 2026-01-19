@@ -151,10 +151,8 @@ namespace PSXSharp.Core.Interpreter {
             PC = Next_PC;
             Next_PC = Next_PC + 4;
 
-            /*if (BUS.debug) {
-                Console.WriteLine("[" + Current_PC.ToString("x").PadLeft(8, '0') + "]" + " --- " + CurrentInstruction.Getfull().ToString("x").PadLeft(8,'0'));
-            }*/
-    
+            //Console.WriteLine($"[{Current_PC:X8}] --- {CurrentInstruction.Value:X8}");
+
             ExecuteInstruction(CurrentInstruction);
             RegisterTransfer(this);
             CurrentCycle += (ulong)(IsReadingFromBIOS ? 22 : 2); ;
