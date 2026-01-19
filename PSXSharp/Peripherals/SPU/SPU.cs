@@ -8,8 +8,9 @@ using static PSXSharp.Peripherals.SPU.Voice.ADSR;
 
 namespace PSXSharp {
     public class SPU {                            //Thanks to BlueStorm, lots of things are here "inspired" :D
-        const uint baseAddress = 0x1f801c00;
-        public Range range = new Range(baseAddress, 640);
+        public const uint BASE_ADDRESS = 0x1F801C00;
+        public const int CYCLES_PER_SAMPLE = 0x300;
+        public Range range = new Range(BASE_ADDRESS, 640);
 
         byte[] RAM = new byte[512*1024];
 
@@ -121,11 +122,11 @@ namespace PSXSharp {
             uint offset = address - range.start;
             switch (offset) {
 
-                case uint when ((offset + baseAddress) >= 0x1F801C00 && (offset + baseAddress) <= 0x1F801D7F):        //Voice 0...23 
+                case uint when ((offset + BASE_ADDRESS) >= 0x1F801C00 && (offset + BASE_ADDRESS) <= 0x1F801D7F):        //Voice 0...23 
 
-                    uint index = (((offset + baseAddress) & 0xFF0) >> 4) - 0xC0;         //index = offset/16 - 0xC0    (Inverse of the equation in psx-spx)
+                    uint index = (((offset + BASE_ADDRESS) & 0xFF0) >> 4) - 0xC0;         //index = offset/16 - 0xC0    (Inverse of the equation in psx-spx)
                     
-                    switch ((offset + baseAddress) & 0xf) {
+                    switch ((offset + BASE_ADDRESS) & 0xf) {
 
                         case 0x0: voices[index].volumeLeft = (short)value; break;
                         case 0x2: voices[index].volumeRight = (short)value; break;
@@ -248,10 +249,10 @@ namespace PSXSharp {
                 case 0x18e: return (ushort)(KOFF>>16);
                 case 0x1ac: return transfer_Control;
 
-                case uint when ((offset + baseAddress) >= 0x1F801C00 && (offset + baseAddress) <= 0x1F801D7F):        //Voice 0...23 
-                    uint index = (((offset + baseAddress) & 0xFF0) >> 4) - 0xC0;         //index = offset/16 - 0xC0    (Inverse of the equation in psx-spx)
+                case uint when ((offset + BASE_ADDRESS) >= 0x1F801C00 && (offset + BASE_ADDRESS) <= 0x1F801D7F):        //Voice 0...23 
+                    uint index = (((offset + BASE_ADDRESS) & 0xFF0) >> 4) - 0xC0;         //index = offset/16 - 0xC0    (Inverse of the equation in psx-spx)
 
-                    switch ((offset + baseAddress) & 0xf) {
+                    switch ((offset + BASE_ADDRESS) & 0xf) {
 
                         case 0x0: return (ushort)voices[index].volumeLeft;
                         case 0x2: return (ushort)voices[index].volumeRight;
@@ -268,7 +269,7 @@ namespace PSXSharp {
 
                 // 1F801E00h..1F801E5Fh - Voice 0..23 Internal Registers
 
-                case uint when ((offset + baseAddress) >= 0x1F801E00 && (offset + baseAddress) <= 0x1F801E5F):
+                case uint when ((offset + BASE_ADDRESS) >= 0x1F801E00 && (offset + BASE_ADDRESS) <= 0x1F801E5F):
                     return 0;
 
                 //1F801D98h - Voice 0..23 Reverb mode aka Echo On (EON) (R/W)
