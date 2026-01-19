@@ -127,9 +127,9 @@ namespace PSXSharp {
 
         public static void RestoreSettings() {
             GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, VramManager.VramFBOHandle);     //Bind VRAM as Draw framebuffer
-            GL.Enable(EnableCap.ScissorTest);                                           //Enable scissoring
-            GL.BindTexture(TextureTarget.Texture2D, VramManager.SampleTextureHandle);                     //Bind VRAM sample texture
-            GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);  //Set scissor box
+            GL.Enable(EnableCap.ScissorTest);                                                     //Enable scissoring
+            GL.BindTexture(TextureTarget.Texture2D, VramManager.SampleTextureHandle);             //Bind VRAM sample texture
+            GL.Scissor(ScissorBox_X, ScissorBox_Y, ScissorBoxWidth, ScissorBoxHeight);            //Set scissor box
             EnableBlending();
             GL.Uniform1(RenderModeLoc, (int)RenderMode.RenderingPrimitives);
         }
