@@ -117,6 +117,10 @@ namespace PSXSharp {
             GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, SCREEN_FRAMEBUFFER);          //Bind screen frambuffer as draw framebuffer
             GL.BindTexture(TextureTarget.Texture2D, VramManager.VramTextureHandle);             //Bind VRAM texture
 
+            //Bind a dummy vertex
+            GL.BindBuffer(BufferTarget.ArrayBuffer, VertexBufferObject);
+            GL.BufferData(BufferTarget.ArrayBuffer, 1 * SizeOfVertexInfo, IntPtr.Zero, BufferUsageHint.StreamDraw);
+
             RenderMode currentRenderMode = is24bpp ? RenderMode.Rendering16bppAs24bppFullVram : RenderMode.Rendering16bppFullVram;
             GL.Uniform1(RenderModeLoc, (int)currentRenderMode);
         }
