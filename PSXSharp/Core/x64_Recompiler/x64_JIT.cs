@@ -54,10 +54,13 @@ namespace PSXSharp.Core.x64_Recompiler {
         #endregion
 
         //Experimental
+        public static bool EnableLoadDelaySlot = false;
+        public static bool IsFirstInstruction = false;
+
+        //Experimental
         public static uint CompileTime_CurrentPC;
         public static uint CompileTime_PC;
         public static uint CompileTime_NextPC;
-        //public static bool CompileTime_Branched;        
 
         //Prints a register value to the console
         //Destroys ecx!
@@ -68,9 +71,6 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.call(r15);
             asm.add(rsp, 40);                       //Undo Shadow space 
         }
-
-        public static bool EnableLoadDelaySlot = false;
-        public static bool IsFirstInstruction = false;
 
         private static void EmitRegisterRead(Assembler asm, AssemblerRegister32 dst, int srcNumber) {
             //asm.mov(r15, GetGPRAddress(srcNumber));     //We use r15 ONLY for holding 64-bit addresses
@@ -249,7 +249,6 @@ namespace PSXSharp.Core.x64_Recompiler {
             EmitRegisterRead(asm, ecx, rs);
             asm.mov(__dword_ptr[rbx + NextPCOffset], ecx);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
-            //CompileTime_Branched = true;
         }
 
         public static void EmitJR(int rs, Assembler asm) {
@@ -257,7 +256,6 @@ namespace PSXSharp.Core.x64_Recompiler {
             EmitRegisterRead(asm, ecx, rs);
             asm.mov(__dword_ptr[rbx + NextPCOffset], ecx);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
-            //CompileTime_Branched = true;
         }
 
         public static void EmitJal(uint targetAddress, Assembler asm) {
@@ -268,14 +266,12 @@ namespace PSXSharp.Core.x64_Recompiler {
             //Jump to target
             asm.mov(__dword_ptr[rbx + NextPCOffset], targetAddress);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
-            //CompileTime_Branched = true;
         }
 
         public static void EmitJump(uint targetAddress, Assembler asm) {
             //Jump to target
             asm.mov(__dword_ptr[rbx + NextPCOffset], targetAddress);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
-            //CompileTime_Branched = true;
         }
 
         public static void EmitBXX(int rs, uint imm, bool link, bool bgez, Assembler asm) {
@@ -1221,10 +1217,10 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitBranch(Assembler asm, uint offset) {
+            //Compute the destination relative to the compile time PC, and write it into the runtime PC
             uint newNextPC = (offset << 2) - 4 + CompileTime_NextPC;
             asm.mov(__dword_ptr[rbx + NextPCOffset], newNextPC);
             asm.mov(__dword_ptr[rbx + BranchFlagOffset], 1);
-            //CompileTime_Branched = true;
         }
 
         public static void EmitTTY(Assembler asm, uint address) {
