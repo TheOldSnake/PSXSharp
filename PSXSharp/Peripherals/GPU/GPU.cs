@@ -108,8 +108,7 @@ namespace PSXSharp {
         int CyclesPerPixel = 4;                  //x=640 (maybe wrong lol)
         double DotClock = 0;
 
-
-        public GPU(ref Timer0 timer0, ref Timer1 timer1) {
+        public GPU(Timer0 timer0, Timer1 timer1) {
             PageBaseX = 0;
             PageBaseY = 0;
             SemiTransparency = 0;
@@ -660,7 +659,7 @@ namespace PSXSharp {
         }
 
         public uint LoadWord(uint address) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
             switch (offset) {
                 case 0: return GPUReadRegister();
                 case 4: return ReadGPUSTAT();
@@ -668,8 +667,8 @@ namespace PSXSharp {
             }
         }
 
-        public void StoreWord(uint address, uint value) {
-            uint offset = address - Range.start;
+        public void WriteWord(uint address, uint value) {
+            uint offset = address - Range.Start;
             switch (offset) {
                 case 0: WriteGP0(value); break;
                 case 4: WriteGP1(value); break;

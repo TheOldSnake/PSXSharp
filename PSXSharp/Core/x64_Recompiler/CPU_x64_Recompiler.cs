@@ -2,7 +2,6 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using Windows.ApplicationModel.Activation;
 using Instruction = PSXSharp.Core.Common.Instruction;
 using Label = Iced.Intel.Label;
 

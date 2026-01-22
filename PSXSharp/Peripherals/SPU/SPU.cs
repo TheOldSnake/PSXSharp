@@ -9,11 +9,11 @@ namespace PSXSharp {
     public class SPU {                            //Thanks to BlueStorm, lots of things are here "inspired" :D
         public const uint BASE_ADDRESS = 0x1F801C00;
         public const int CYCLES_PER_SAMPLE = 0x300;
-        public Range range = new Range(BASE_ADDRESS, 640);
+        public Range Range = new Range(BASE_ADDRESS, 640);
 
         byte[] RAM = new byte[512*1024];
 
-        UInt16 SPUCNT;
+        ushort SPUCNT;
         bool reverbEnabled;
         bool SPUEnable;
         bool IRQ9Enable;
@@ -30,10 +30,10 @@ namespace PSXSharp {
         byte Data_transfer_busy;                //10 (1 = busy)           
         byte Writing_Capture_Buffers;           //11 Writing to First/Second half of Capture Buffers (0=First, 1=Second)
 
-        Int16 mainVolumeLeft;
-        Int16 mainVolumeRight;
-        Int16 vLOUT;
-        Int16 vROUT;
+        short mainVolumeLeft;
+        short mainVolumeRight;
+        short vLOUT;
+        short vROUT;
 
         uint KOFF;
         uint KON;
@@ -47,7 +47,7 @@ namespace PSXSharp {
         uint external_Audio_Input_Volume;
         CDROMDataController CDDataControl;
 
-        UInt16 transfer_Control;
+        ushort transfer_Control;
         uint transfer_address;
         uint currentAddress;
         uint reverbCurrentAddress;
@@ -116,8 +116,8 @@ namespace PSXSharp {
             SPUCallback = SPUEvent;
         }
 
-        public void StoreHalf(uint address, UInt16 value) {
-            uint offset = address - range.start;
+        public void WriteHalf(uint address, ushort value) {
+            uint offset = address - Range.Start;
             switch (offset) {
 
                 case uint when ((offset + BASE_ADDRESS) >= 0x1F801C00 && (offset + BASE_ADDRESS) <= 0x1F801D7F):        //Voice 0...23 
@@ -140,7 +140,7 @@ namespace PSXSharp {
              
                     break;
 
-                case 0x1aa: setCtrl(value); break;
+                case 0x1aa: SetCtrl(value); break;
                 case 0x180: mainVolumeLeft = (short)value; break;
                 case 0x182: mainVolumeRight = (short)value; break;
                 case 0x184: vLOUT = (short)value; break;
@@ -230,13 +230,13 @@ namespace PSXSharp {
                                                       +"Full address: 0x" + (offset+0x1f801c00).ToString("x"));
             }
         }
-        public UInt16 LoadHalf(uint address) {
-            uint offset = address - range.start;
+        public ushort ReadHalf(uint address) {
+            uint offset = address - Range.Start;
             ushort endx = 0;
 
             switch (offset) {
                 case 0x1aa: return SPUCNT;
-                case 0x1ae: return readStat();
+                case 0x1ae: return ReadStatus();
                 case 0x180: return (ushort)mainVolumeLeft;
                 case 0x182: return (ushort)mainVolumeRight;
                 case 0x184: return (ushort)vLOUT;
@@ -337,13 +337,14 @@ namespace PSXSharp {
             }
         }
 
-        public uint LoadWord(uint address) {
-            return LoadHalf(address) | (((uint)LoadHalf(address + 2)) << 16);   //Why repeat the whole thing when you can do this lol
+        public uint ReadWord(uint address) {
+            uint lower = ReadHalf(address);
+            uint upper = ReadHalf(address + 2);
+            return lower | (upper << 16);
         }
 
-        private ushort readStat() {
+        private ushort ReadStatus() {
             uint status = 0;
-
             status |= SPU_Mode;
             status |= ((uint)IRQ_Flag) << 6;
             status |= ((uint)DMA_Read_Write_Request) << 7;
@@ -351,13 +352,11 @@ namespace PSXSharp {
             status |= ((uint)DMA_Read_Request) << 9;
             status |= ((uint)Data_transfer_busy) << 10;
             status |= ((uint)Writing_Capture_Buffers) << 11;
-
             //12-15 are uknown/unused (seems to be usually zero)
-
             return (ushort)status;
         }
 
-        public void setCtrl(UInt16 value) {
+        public void SetCtrl(ushort value) {
             SPUCNT = value;
             CDAudioEnable = (value & 1) == 1;
             CDReverbEnable = ((value >> 2) & 1) == 1;
@@ -679,7 +678,7 @@ namespace PSXSharp {
             }
         }
 
-        internal void DMAtoSPU(uint data) {
+        internal void WriteDMA(uint data) {
             if ((transfer_Control >> 1 & 7) != 2) { throw new Exception(); }
             currentAddress &= 0x7FFFF;
             if((currentAddress <= SPU_IRQ_Address) && ((currentAddress + 3) >= SPU_IRQ_Address)) { SPU_IRQ(); }
@@ -690,7 +689,7 @@ namespace PSXSharp {
             RAM[currentAddress++] = (byte)((data >> 24) & 0xFF);
         }
 
-        internal uint SPUtoDMA() {
+        internal uint ReadDMA() {
             if ((transfer_Control >> 1 & 7) != 2) { throw new Exception(); }
             currentAddress &= 0x7FFFF;
             if ((currentAddress <= SPU_IRQ_Address) && ((currentAddress + 3) >= SPU_IRQ_Address)) { SPU_IRQ(); }

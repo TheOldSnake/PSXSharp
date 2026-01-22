@@ -37,7 +37,7 @@ namespace PSXSharp.Core {
 
         public static void FlushInstructionCache(nint ptr, nuint size) => FlushInstructionCache(ProcessHandle, ptr, size);
         public static void FillNativeMemory(void* ptr, nuint byteCount, byte value) => NativeMemory.Fill(ptr, byteCount, value);
-        public static void CopyNativeMemory(void* src, void* dest, nuint count) => NativeMemory.Copy(src, dest, count);
+        public static void CopyNativeMemory(void* src, void* dest, nuint byteCount) => NativeMemory.Copy(src, dest, byteCount);
 
         public static void* AllocateExecutableMemory(int size, bool isTracked = true) {
             //Allocate 64MB of executable memory

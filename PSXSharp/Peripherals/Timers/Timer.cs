@@ -21,7 +21,18 @@ namespace PSXSharp.Peripherals.Timers {
 
         protected bool ShouldReset = false;
 
-        public uint Read(uint address) {
+        //Writing 16-bit will write a full 32-bit, according to "Unpredictable Things" in PSX-SPX
+        public void WriteHalf(uint address, ushort value) => WriteWord(address, value);
+        public ushort ReadHalf(uint address) {     
+            uint word = ReadWord(address);
+            if ((address & 0x2) == 1) {
+                word >>= 16;
+            }
+
+            return (ushort)word;
+        }
+
+        public uint ReadWord(uint address) {
            
             switch (address & 0xF) {
                 case 0:
@@ -42,7 +53,7 @@ namespace PSXSharp.Peripherals.Timers {
             }
         }
 
-        public unsafe void Write(uint address, uint value) {
+        public unsafe void WriteWord(uint address, uint value) {
             /*
              Writing a Current value larger than the Target value will not trigger the condition of Mode Bit4, 
              but make the counter run until FFFFh and wrap around to 0000h once, before using the target value.

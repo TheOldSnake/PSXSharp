@@ -1,16 +1,11 @@
 ﻿namespace PSXSharp {
-    public class Range {
-        public uint start;
-        public uint length;
-
+    public struct Range {
+        public uint Start;
+        public uint Length;
+        public readonly bool Contains(uint address) => address >= Start && address < Start + Length;
         public Range(uint start, uint length) {
-            this.start = start;
-            this.length = length;
+            Start = start;
+            Length = length;
         }
-
-        public bool Contains(uint address) {
-            return address >= start && address < start + length;
-        }
-
     }
 }

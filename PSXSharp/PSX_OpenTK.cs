@@ -16,6 +16,7 @@ using Keys = OpenTK.Windowing.GraphicsLibraryFramework.Keys;
 namespace PSXSharp {
     public class PSX_OpenTK {
         private static bool IsUncapped = true;
+
         public PSX_OpenTK(string? biosPath, string? bootPath, bool isBootingEXE) {
             //Disable CheckForMainThread to allow running from a secondary thread
             GLFWProvider.CheckForMainThread = false;
@@ -38,36 +39,10 @@ namespace PSXSharp {
             mainWindow.VSync = VSyncMode.Off;
 
             Console.OutputEncoding = Encoding.UTF8;
-
-            //Create everything here, pass relevant user settings
-            RAM Ram = new RAM();
-            BIOS Bios = new BIOS(biosPath);
-            Scratchpad Scratchpad = new Scratchpad();
-            CD_ROM cdrom = isBootingEXE? new CD_ROM() : new CD_ROM(bootPath, false);
-            SPU Spu = new SPU(ref cdrom.DataController);         //Needs to read CD-Audio
-            JOY JOY_IO = new JOY();
-            SIO1 SerialIO1 = new SIO1();
-            MemoryControl MemoryControl = new MemoryControl();   //useless ?
-            RAM_SIZE RamSize = new RAM_SIZE();                   //useless ?
-            CACHECONTROL CacheControl = new CACHECONTROL();      //useless ?
-            Expansion1 Ex1 = new Expansion1();
-            Expansion2 Ex2 = new Expansion2();
-            Timer0 Timer0 = new Timer0();
-            Timer1 Timer1 = new Timer1();
-            Timer2 Timer2 = new Timer2();
-            MacroblockDecoder Mdec = new MacroblockDecoder();
-            GPU Gpu = new GPU(ref Timer0, ref Timer1);
-
-            BUS Bus = new BUS(          
-                Bios,Ram,Scratchpad,cdrom,Spu,
-                JOY_IO, SerialIO1, MemoryControl,RamSize,CacheControl,
-                Ex1,Ex2,Timer0,Timer1,Timer2,Mdec,Gpu
-            );
-
-
             bool isRecompiler = true;
             bool is_x64 = true;
-            CPU CPU = CPUWrapper.CreateInstance(isRecompiler, is_x64, isBootingEXE, bootPath, Bus);
+            BUS bus = CreateHardware(biosPath, bootPath, isBootingEXE);
+            CPU CPU = CPUWrapper.CreateInstance(isRecompiler, is_x64, isBootingEXE, bootPath, bus);
 
             string cpuType = CPUWrapper.GetCPUType();
             mainWindow.MainCPU = CPU;
@@ -86,7 +61,7 @@ namespace PSXSharp {
             mainWindow.FrameTimer.Dispose();
             mainWindow.Dispose();   //Will reach this if the render window 
             mainWindow = null;
-            SerialIO1.Dispose();
+            bus.SerialIO1.Dispose();
         }   
 
         public static Vector2i AtCenterOfScreen(Vector2i size) {
@@ -97,6 +72,50 @@ namespace PSXSharp {
             int newX = (width - size.X) / 2;
             int newY = (height - size.Y) / 2;
             return new Vector2i(newX, newY);
+        }
+
+        private BUS CreateHardware(string? biosPath, string? bootPath, bool isBootingEXE) {
+            BIOS bios = new BIOS(biosPath);
+            RAM ram = new RAM();
+            Scratchpad scratchpad = new Scratchpad();
+            CD_ROM cdrom = isBootingEXE ? new CD_ROM() : new CD_ROM(bootPath, false);
+            SPU spu = new SPU(ref cdrom.DataController);
+            JOY joyIO = new JOY();
+            SIO1 serialIO1 = new SIO1();
+            MemoryControl memoryControl = new MemoryControl();
+            RAM_SIZE ramSize = new RAM_SIZE();
+            CACHECONTROL cacheControl = new CACHECONTROL();
+            Expansion1 expansion1 = new Expansion1();
+            Expansion2 expansion2 = new Expansion2();
+            Timer0 timer0 = new Timer0();
+            Timer1 timer1 = new Timer1();
+            Timer2 timer2 = new Timer2();
+            MacroblockDecoder mdec = new MacroblockDecoder();
+            GPU gpu = new GPU(timer0, timer1);
+            DMA dma = new DMA();
+
+            BUS bus = new BUS(
+                bios: bios,
+                ram: ram,
+                scratchpad: scratchpad,
+                cdrom: cdrom,
+                spu: spu,
+                joyIO: joyIO,
+                serialIO1: serialIO1,
+                memoryControl: memoryControl,
+                ramSize: ramSize,
+                cacheControl: cacheControl,
+                expansion1: expansion1,
+                expansion2: expansion2,
+                timer0: timer0,
+                timer1: timer1,
+                timer2: timer2,
+                mdec: mdec,
+                gpu: gpu,
+                dma: dma
+            );
+
+            return bus;
         }
     }
 

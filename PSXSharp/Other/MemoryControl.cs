@@ -3,7 +3,7 @@
 namespace PSXSharp {
 
     public class MemoryControl {
-        public Range range = new Range(0x1f801000, 0x24);
+        public Range Range = new Range(0x1F801000, 0x24);
 
         //Addresses
         const uint EXPANSION1_BASE = 0x1F801000;
@@ -27,7 +27,18 @@ namespace PSXSharp {
          uint EXPANSION2_DELAY_VALUE = 0x00070777;
          uint COMMON_DELAY_VALUE = 0x00031125;
 
-        public uint Read(uint address) {
+        //Writing 16-bit will write a full 32-bit, according to "Unpredictable Things" in PSX-SPX
+        public void WriteHalf(uint address, ushort value) => WriteWord(address, value);
+        public ushort ReadHalf(uint address) {
+            uint word = ReadWord(address);
+            if ((address & 0x2) == 1) {
+                word >>= 16;
+            }
+
+            return (ushort)word;
+        }
+
+        public uint ReadWord(uint address) {
             switch (address) {
                 case EXPANSION1_BASE: return EXPANSION1_BASE_VALUE;
                 case EXPANSION2_BASE: return EXPANSION2_BASE_VALUE;
@@ -42,7 +53,7 @@ namespace PSXSharp {
             }
          }
 
-        public void Write(uint address, uint value) {
+        public void WriteWord(uint address, uint value) {
             switch (address) {
                 case EXPANSION1_BASE: EXPANSION1_BASE_VALUE = value; break; 
                 case EXPANSION2_BASE: EXPANSION2_BASE_VALUE = value; break;

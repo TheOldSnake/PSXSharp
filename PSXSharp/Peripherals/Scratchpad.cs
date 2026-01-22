@@ -9,7 +9,7 @@ namespace PSXSharp {
         public byte* NativeAddress => Data;
 
         public UInt32 ReadWord(UInt32 address) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
 
             UInt32 b0 = Data[offset + 0];
             UInt32 b1 = Data[offset + 1];
@@ -20,7 +20,7 @@ namespace PSXSharp {
         }
 
         public void WriteWord(UInt32 address, UInt32 value) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
 
             byte b0 = (byte)value;
             byte b1 = (byte)(value >> 8);
@@ -34,7 +34,7 @@ namespace PSXSharp {
         }
 
         internal UInt16 ReadHalf(UInt32 address) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
 
             UInt16 b0 = Data[offset + 0];
             UInt16 b1 = Data[offset + 1];
@@ -42,7 +42,7 @@ namespace PSXSharp {
             return (UInt16)(b0 | (b1 << 8));
         }
         internal void WriteHalf(UInt32 address, UInt16 value) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
 
             byte b0 = (byte)value;
             byte b1 = (byte)(value >> 8);
@@ -52,12 +52,12 @@ namespace PSXSharp {
         }
 
         internal byte ReadByte(UInt32 address) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
             return Data[offset];
         }
 
         internal void WriteByte(UInt32 address, byte value) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
             Data[offset] = value;
         }
     }

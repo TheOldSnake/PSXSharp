@@ -91,7 +91,7 @@ namespace PSXSharp.Peripherals.IO {
             }
         }
 
-        public uint LoadWord(uint address) {
+        public uint ReadWord(uint address) {
             //Console.WriteLine("Read32: " + (address & 0xF).ToString("x"));
             switch (address & 0xF) {
                 case 0x0: return GetData();
@@ -99,7 +99,7 @@ namespace PSXSharp.Peripherals.IO {
                 default: throw new Exception("Attempting to load word from: " + address.ToString("x"));
             }
         }
-        public ushort LoadHalf(uint address) {
+        public ushort ReadHalf(uint address) {
             //case 0x4?
             //Console.WriteLine("Read16: " + (address & 0xF).ToString("x"));
 
@@ -112,7 +112,7 @@ namespace PSXSharp.Peripherals.IO {
                 default: throw new Exception("Attempting to load half from: " + address.ToString("x"));
             }
         }
-        public void StoreHalf(uint address, ushort data) {
+        public void WriteHalf(uint address, ushort data) {
             //Console.WriteLine("Write16: " + (address & 0xF).ToString("x"));
 
             switch (address & 0xF) {
@@ -124,7 +124,7 @@ namespace PSXSharp.Peripherals.IO {
                 default: throw new Exception("Attempting to store half to: " + address.ToString("x"));
             }
         }
-        public byte LoadByte(uint address) {
+        public byte ReadByte(uint address) {
             //Console.WriteLine("Read8: " + (address & 0xF).ToString("x"));
             
             switch (address & 0xF) {
@@ -133,9 +133,9 @@ namespace PSXSharp.Peripherals.IO {
                 default: throw new Exception("[SIO1] Unhandled reading from: " + address.ToString("x"));
             }
         }
-        public void StoreByte(uint address, byte data) {
+        public void WriteByte(uint address, byte data) {
             //Console.WriteLine("Write8: " + (address & 0xF).ToString("x"));
-            StoreHalf(address, data); //Could be very wrong
+            WriteHalf(address, data); //Could be very wrong
         }
         private void Transfare(byte data) {
             if (!IsConnected || !Socket.IsConnected()) {

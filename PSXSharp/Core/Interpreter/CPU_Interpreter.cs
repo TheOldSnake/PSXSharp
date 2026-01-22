@@ -88,7 +88,7 @@ namespace PSXSharp.Core.Interpreter {
         public RegisterLoad DirectWrite;       //Not memory access, will overwrite memory loads
 
         Instruction CurrentInstruction = new Instruction();
-        bool IsReadingFromBIOS => BUS.BIOS.Range.Contains(BUS.Mask(PC));
+        bool IsReadingFromBIOS => BUS.BIOS.Range.Contains(BUS.ToPhysical(PC));
 
         public uint GetPC() => PC;
         public CPU_Interpreter(bool isEXE, string? EXEPath, BUS bus) {
@@ -231,7 +231,7 @@ namespace PSXSharp.Core.Interpreter {
                             break;
 
                         default:
-                            if (BUS.debug) {
+                            if (BUS.Debug) {
                                 Console.WriteLine("Function A: " + GPR[9].ToString("x"));
                             }
 
@@ -296,7 +296,7 @@ namespace PSXSharp.Core.Interpreter {
                             break;
 
                         default:
-                            if (BUS.debug) {
+                            if (BUS.Debug) {
                                 Console.WriteLine("Function B: " + GPR[9].ToString("x"));
                             }
                             break;
@@ -305,7 +305,7 @@ namespace PSXSharp.Core.Interpreter {
                     break;
 
                 case 0xC0:
-                    if (BUS.debug) {
+                    if (BUS.Debug) {
                         Console.WriteLine("Function C: " + GPR[9].ToString("x"));
                     }
                     break;

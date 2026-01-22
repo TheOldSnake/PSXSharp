@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace PSXSharp {
     public unsafe class CD_ROM {
-        public Range range = new Range(0x1F801800, 4);
+        public Range Range = new Range(0x1F801800, 4);
         const int OneSecond = 33868800;
 
         Action NormalCDROMCallback;
@@ -204,8 +204,8 @@ namespace PSXSharp {
             return status;
         }
 
-        public void StoreByte(uint address, byte value) {
-            uint offset = address - range.start;
+        public void WriteByte(uint address, byte value) {
+            uint offset = address - Range.Start;
             switch (offset) {
                 case 0: Index = value & 0x3; break; //Status register, all mirrors
                 case 1:
@@ -240,8 +240,8 @@ namespace PSXSharp {
             }
         }
 
-        public byte LoadByte(uint address) {
-            uint offset = address - range.start;
+        public byte ReadByte(uint address) {
+            uint offset = address - Range.Start;
             switch (offset) {
                 case 0: return CDROM_Status();                          //Status register, all indexes are mirrors
                 case 1: return ResponseBuffer.ReadNext();                //Response fifo, all indexes are mirrors

@@ -24,7 +24,7 @@ namespace PSXSharp {
         }
         
         public uint ReadWord(UInt32 address) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
             uint b0 = Data[offset + 0];
             uint b1 = Data[offset + 1];
             uint b2 = Data[offset + 2];
@@ -34,12 +34,12 @@ namespace PSXSharp {
         }
 
         public byte ReadByte(uint address) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
             return Data[offset];
         }
 
         public ushort ReadHalf(uint address) {
-            uint offset = address - Range.start;
+            uint offset = address - Range.Start;
             uint b0 = Data[offset + 0];
             uint b1 = Data[offset + 1];
             return (ushort)(b0 | (b1 << 8));

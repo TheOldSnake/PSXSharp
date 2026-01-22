@@ -193,7 +193,7 @@ namespace PSXSharp {
             MSILCacheBlock[] currentCache = isBios? BIOS_CacheBlocks : RAM_CacheBlocks;
             int totalCycles = 0;
             currentCache[block].FunctionPointer(this);
-            totalCycles = (int)(currentCache[block].Cycles + BUS.GetBusCycles());
+            totalCycles = (int)(currentCache[block].Cycles);
             return totalCycles;
         }
 
@@ -231,7 +231,7 @@ namespace PSXSharp {
         }
 
         private bool InvalidateRAM_Block(uint block) {  //For RAM Blocks only
-            uint address = BUS.Mask(RAM_CacheBlocks[block].Address);
+            uint address = BUS.ToPhysical(RAM_CacheBlocks[block].Address);
             uint numberOfInstructions = RAM_CacheBlocks[block].Total;
             ReadOnlySpan<byte> rawMemory = new ReadOnlySpan<byte>(BUS.RAM.NativeAddress, (int)RAM_SIZE).Slice((int)address, (int)(numberOfInstructions * 4));
             ReadOnlySpan<uint> instructionsSpan = MemoryMarshal.Cast<byte, uint>(rawMemory);
@@ -341,7 +341,7 @@ namespace PSXSharp {
                             break;
 
                         default:
-                            if (BUS.debug) {
+                            if (BUS.Debug) {
                                 Console.WriteLine("Function A: " + GPR[9].ToString("x"));
                             }
                             break;
@@ -383,7 +383,7 @@ namespace PSXSharp {
                             break;
                             
                         default:
-                            if (BUS.debug) {
+                            if (BUS.Debug) {
                                 Console.WriteLine("Function B: " + GPR[9].ToString("x"));
                             }
                             break;
@@ -392,7 +392,7 @@ namespace PSXSharp {
                     break;
 
                 case 0xC0:
-                    if (BUS.debug) {
+                    if (BUS.Debug) {
                         Console.WriteLine("Function C: " + GPR[9].ToString("x"));
                     }
                     break;

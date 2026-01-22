@@ -5,7 +5,7 @@ using System.Data;
 namespace PSXSharp.Peripherals.MDEC {
     public class MacroblockDecoder {    //JPEG-style Macroblock Decoder
 
-        public Range range = new Range(0x1F801820, 5);
+        public Range Range = new Range(0x1F801820, 5);
 
         //Status Register
         const uint InitialStatus = 0x80040000;
@@ -81,16 +81,16 @@ namespace PSXSharp.Peripherals.MDEC {
         }
 
         //TODO: Reading from DMA outputs the data in a different order than reading directly 
-        public uint Read(uint address) {
-            uint offset = address - range.start;
+        public uint ReadWord(uint address) {
+            uint offset = address - Range.Start;
             switch (offset) {
                 case 0: return ReadCurrentMacroblock();              //Response/Data read
                 case 4: return ReadStatus();                        //Status read
                 default: throw new Exception("Unknown MDEC Read port: " + offset.ToString("x") + " - Full address: " + address.ToString("x"));
             }
         }
-        public void Write(uint address, uint value) {
-            uint offset = address - range.start;
+        public void WriteWord(uint address, uint value) {
+            uint offset = address - Range.Start;
             switch (offset) {
                 case 0: CommandAndParameters(value); break;
                 case 4: WriteControl(value); break;

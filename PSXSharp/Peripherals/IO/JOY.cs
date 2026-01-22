@@ -93,7 +93,7 @@ namespace PSXSharp.Peripherals.IO {
             Callback = JOYEvent;
         }
 
-        public uint LoadWord(uint address) {
+        public uint ReadWord(uint address) {
             switch (address & 0xF) {
                 case 0x0: return (uint)(RX_Data & 0xFF);
                 case 0x4: return GetStatus();
@@ -101,7 +101,7 @@ namespace PSXSharp.Peripherals.IO {
             }
         }
 
-        public ushort LoadHalf(uint address) {
+        public ushort ReadHalf(uint address) {
             //case 0x4?
             switch (address & 0xF) {
                 case 0x0: return (ushort)(RX_Data & 0xFF);
@@ -113,7 +113,7 @@ namespace PSXSharp.Peripherals.IO {
             }
         }
 
-        public void StoreHalf(uint address, ushort data) {
+        public void WriteHalf(uint address, ushort data) {
             switch (address & 0xF) {
                 case 0x0: Transfare((byte)data); break;
                 case 0x8: WriteMode(data); break;
@@ -126,7 +126,7 @@ namespace PSXSharp.Peripherals.IO {
             }
         }
 
-        public byte LoadByte(uint address) {
+        public byte ReadByte(uint address) {
             switch (address & 0xF) {
                 case 0x00:
                     Status.RX_FIFO_Not_Empty = 0;
@@ -145,8 +145,8 @@ namespace PSXSharp.Peripherals.IO {
             }
         }
 
-        public void StoreByte(uint address, byte data) {
-            StoreHalf(address, data); //Could be very wrong
+        public void WriteByte(uint address, byte data) {
+            WriteHalf(address, data); //Could be very wrong
         }
 
         public void JOYEvent() {
