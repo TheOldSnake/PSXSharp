@@ -3,7 +3,7 @@
 namespace PSXSharp {
     public partial class BUS {
         private (Range Range, Func<uint, uint>? Read, Action<uint, uint>? Write)[] CreateIO32Map() {
-            return [
+            (Range Range, Func<uint, uint>? Read, Action<uint, uint>? Write)[] map = [
                 (IRQ_CONTROL.Range,   IRQ_CONTROL.ReadWord,   IRQ_CONTROL.WriteWord),
                 (DMA.Range,           DMA.ReadWord,           DMA.WriteWord),
                 (GPU.Range,           GPU.LoadWord,           GPU.WriteWord),
@@ -18,10 +18,13 @@ namespace PSXSharp {
                 (RamSize.Range,       RamSize.ReadWord,       RamSize.WriteWord),
                 (CacheControl.Range,  CacheControl.ReadWord,  CacheControl.WriteWord),
             ];
+
+            Array.Sort(map, (a, b) => a.Range.Start.CompareTo(b.Range.Start));
+            return map;
         }
 
         private (Range Range, Func<uint, ushort>? Read, Action<uint, ushort>? Write)[] CreateIO16Map() {
-            return [
+            (Range Range, Func<uint, ushort>? Read, Action<uint, ushort>? Write)[] map = [
                 (SPU.Range,           SPU.ReadHalf,           SPU.WriteHalf),
                 (IRQ_CONTROL.Range,   IRQ_CONTROL.ReadHalf,   IRQ_CONTROL.WriteHalf),
                 (DMA.Range,           DMA.ReadHalf,           DMA.WriteHalf),
@@ -32,10 +35,13 @@ namespace PSXSharp {
                 (SerialIO1.Range,     SerialIO1.ReadHalf,     SerialIO1.WriteHalf),
                 (MemoryControl.Range, MemoryControl.ReadHalf, MemoryControl.WriteHalf),
             ];
+
+            Array.Sort(map, (a, b) => a.Range.Start.CompareTo(b.Range.Start));
+            return map;
         }
 
         private (Range Range, Func<uint, byte>? Read, Action<uint, byte>? Write)[] CreateIO8Map() {
-            return [
+            (Range Range, Func<uint, byte>? Read, Action<uint, byte>? Write)[] map = [
                 (CDROM.Range,      CDROM.ReadByte,      CDROM.WriteByte),
                 (DMA.Range,        DMA.ReadByte,        DMA.WriteByte),
                 (JOY_IO.Range,     JOY_IO.ReadByte,     JOY_IO.WriteByte),
@@ -43,6 +49,9 @@ namespace PSXSharp {
                 (Expansion1.Range, Expansion1.ReadByte, Expansion1.WriteByte),
                 (Expansion2.Range, Expansion2.ReadByte, Expansion2.WriteByte),
             ];
+
+            Array.Sort(map, (a, b) => a.Range.Start.CompareTo(b.Range.Start));
+            return map;
         }
     }
 }
