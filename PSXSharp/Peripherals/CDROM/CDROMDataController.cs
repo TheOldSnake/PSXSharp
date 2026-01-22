@@ -46,7 +46,7 @@ namespace PSXSharp {
             Video = 1, Audio = 2, Data = 4
         }
 
-        public CDROMDataController(string diskPath = null) {
+        public CDROMDataController(string? diskPath) {
             LoadDisk(diskPath);
             CurrentVolume.RtoL = 0x40;
             CurrentVolume.RtoR = 0x40;
@@ -54,20 +54,18 @@ namespace PSXSharp {
             CurrentVolume.RtoR = 0x40;
         }
 
-        public void LoadDisk(string diskPath = null) {
-            if (diskPath != null) {
-                Disk = new Disk(diskPath);
+        public void LoadDisk(string? diskPath) {
+            Disk = new Disk(diskPath);
+            if (Disk.IsPresent) {
                 if (Disk.IsValid) {
                     SelectTrack(1);
                 } else {
                     Console.WriteLine("[CDROM] Invalid Disk!");
                 }
+
                 if (Disk.IsAudioDisk) {
                     Console.WriteLine("[CDROM] Audio Disk detected");
                 }
-            } else {
-                Console.WriteLine("[CDROM] No game path provided");
-                Console.WriteLine("[CDROM] Proceeding to boot without a game");
             }
         }
 

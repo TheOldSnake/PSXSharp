@@ -11,9 +11,13 @@ namespace PSXSharp {
 
         private readonly byte* Data = (byte*)NativeMemoryManager.AllocateNativeMemory(SIZE);
         public byte* NativeAddress => Data;
-        public string ID { get; set; }
-        public BIOS(string path) {
+        public BIOS(string? path) {
+            if (string.IsNullOrEmpty(path)) {
+                throw new Exception("BIOS Path is null or empty");
+            }
+
             byte[] loadedFile = File.ReadAllBytes(path);
+
             if (loadedFile.Length != SIZE) {
                 throw new Exception("BIOS file is not valid");
             }

@@ -125,17 +125,9 @@ namespace PSXSharp {
 
         private bool Acked => (IRQ_Flag & 0x7) == 0;
 
-        public CD_ROM(string path, bool isDirectFile) {
+        public CD_ROM(string? path) {
             LoadLUT();
             DataController = new CDROMDataController(path);
-            NormalCDROMCallback = NormalResponseHandler;
-            ContinuesCDROMCallback = ContinuesResponseHandler;
-        }
-
-        public CD_ROM() {   //Overload for when booting EXEs
-            //Stub for the CDROM Tests
-            LoadLUT();
-            DataController = new CDROMDataController(@"C:\Users\Old Snake\Desktop\PS1\ROMS\Archive");
             NormalCDROMCallback = NormalResponseHandler;
             ContinuesCDROMCallback = ContinuesResponseHandler;
         }

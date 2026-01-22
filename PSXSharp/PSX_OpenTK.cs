@@ -75,10 +75,11 @@ namespace PSXSharp {
         }
 
         private BUS CreateHardware(string? biosPath, string? bootPath, bool isBootingEXE) {
+            string? cdPath = isBootingEXE ? string.Empty : bootPath;
             BIOS bios = new BIOS(biosPath);
             RAM ram = new RAM();
             Scratchpad scratchpad = new Scratchpad();
-            CD_ROM cdrom = isBootingEXE ? new CD_ROM() : new CD_ROM(bootPath, false);
+            CD_ROM cdrom = new CD_ROM(cdPath);
             SPU spu = new SPU(ref cdrom.DataController);
             JOY joyIO = new JOY();
             SIO1 serialIO1 = new SIO1();

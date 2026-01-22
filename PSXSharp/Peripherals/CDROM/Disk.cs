@@ -1,8 +1,6 @@
 ﻿using System.IO;
 using System.Text;
 using System;
-using NAudio.Wave;
-using OpenTK.Graphics.OpenGL;
 
 namespace PSXSharp.Peripherals.CDROM {
     public class Disk {
@@ -12,12 +10,21 @@ namespace PSXSharp.Peripherals.CDROM {
         public bool HasAudioTracks;
         public bool IsAudioDisk => HasAudioTracks && !HasDataTracks;
         public bool IsValid => Tracks != null;
-        public Disk(string folderPath) {
+        public bool IsPresent = false;
+        public Disk(string? folderPath) {
             ConsoleColor previousColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Tracks = BuildTracks(folderPath);
+
+            if (!string.IsNullOrEmpty(folderPath)) {
+                IsPresent = true;
+                Tracks = BuildTracks(folderPath);
+            } else {
+                Console.WriteLine("[CDROM] No game path provided");
+            }
+
             Console.ForegroundColor = previousColor;
         }
+
         private Track[] BuildTracks(string path) {
             string[] rawFiles = Directory.GetFiles(path);
             string cuePath = "";
