@@ -45,9 +45,9 @@ namespace PSXSharp {
         private readonly byte** WritePageTable;
 
         //IO Read/Write Mapping
-        private readonly (Range Range, Func<uint, uint>?    Read, Action<uint, uint>?   Write)[] IO32Map;
-        private readonly (Range Range, Func<uint, ushort>?  Read, Action<uint, ushort>? Write)[] IO16Map;
-        private readonly (Range Range, Func<uint, byte>?    Read, Action<uint, byte>?   Write)[] IO8Map;
+        private readonly IO32[] IO32Map;
+        private readonly IO16[] IO16Map;
+        private readonly IO8[] IO8Map;
 
         //Scratchpad is only accessable via KUSEG and KSEG0
         private bool IsScratchPad(uint page, uint offset) => (page == 0x1F80 || page == 0x9F80) && offset < 0x400;
@@ -285,7 +285,7 @@ namespace PSXSharp {
 
         private uint ReadWordIO(uint virtualAddress) {
             uint physicalAddress = ToPhysical(virtualAddress);
-            ReadOnlySpan<(Range Range, Func<uint, uint>? Read, Action<uint, uint>? Write)> IO32Span = IO32Map;
+            ReadOnlySpan<IO32> IO32Span = IO32Map;
 
             for (int i = 0; i < IO32Span.Length; i++) {
                 var IO32 = IO32Span[i];
@@ -303,7 +303,7 @@ namespace PSXSharp {
 
         private ushort ReadHalfIO(uint virtualAddress) {
             uint physicalAddress = ToPhysical(virtualAddress);
-            ReadOnlySpan<(Range Range, Func<uint, ushort>? Read, Action<uint, ushort>? Write)> IO16Span = IO16Map;
+            ReadOnlySpan<IO16> IO16Span = IO16Map;
 
             for (int i = 0; i < IO16Span.Length; i++) {
                 var IO16 = IO16Span[i];
@@ -321,7 +321,7 @@ namespace PSXSharp {
 
         private byte ReadByteIO(uint virtualAddress) {
             uint physicalAddress = ToPhysical(virtualAddress);
-            ReadOnlySpan<(Range Range, Func<uint, byte>? Read, Action<uint, byte>? Write)> IO8Span = IO8Map;
+            ReadOnlySpan<IO8> IO8Span = IO8Map;
 
             for (int i = 0; i < IO8Span.Length; i++) {
                 var IO8 = IO8Span[i];
@@ -339,7 +339,7 @@ namespace PSXSharp {
 
         private void WriteWordIO(uint address,uint value) {
             uint physicalAddress = ToPhysical(address);
-            ReadOnlySpan<(Range Range, Func<uint, uint>? Read, Action<uint, uint>? Write)> IO32Span = IO32Map;
+            ReadOnlySpan<IO32> IO32Span = IO32Map;
 
             for (int i = 0; i < IO32Span.Length; i++) {
                 var IO32 = IO32Span[i];
@@ -358,7 +358,7 @@ namespace PSXSharp {
 
         private void WriteHalfIO(uint address, ushort value) {
             uint physicalAddress = ToPhysical(address);
-            ReadOnlySpan<(Range Range, Func<uint, ushort>? Read, Action<uint, ushort>? Write)> IO16Span = IO16Map;
+            ReadOnlySpan<IO16> IO16Span = IO16Map;
 
             for (int i = 0; i < IO16Span.Length; i++) {
                 var IO16 = IO16Span[i];
@@ -377,7 +377,7 @@ namespace PSXSharp {
 
         private void WriteByteIO(uint address, byte value) {
             uint physicalAddress = ToPhysical(address);
-            ReadOnlySpan<(Range Range, Func<uint, byte>? Read, Action<uint, byte>? Write)> IO8Span = IO8Map;
+            ReadOnlySpan<IO8> IO8Span = IO8Map;
 
             for (int i = 0; i < IO8Span.Length; i++) {
                 var IO8 = IO8Span[i];
