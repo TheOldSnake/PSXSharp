@@ -15,6 +15,13 @@ using Keys = OpenTK.Windowing.GraphicsLibraryFramework.Keys;
 
 namespace PSXSharp {
     public class PSX_OpenTK {
+        public enum CPUType {
+            Interpreter,
+            MSILRecompiler,
+            x64Recompiler
+        }
+
+        private CPUType CpuType { get; } = CPUType.x64Recompiler;
         private static bool IsUncapped = true;
 
         public PSX_OpenTK(string? biosPath, string? bootPath, bool isBootingEXE) {
@@ -39,12 +46,8 @@ namespace PSXSharp {
             mainWindow.VSync = VSyncMode.Off;
 
             Console.OutputEncoding = Encoding.UTF8;
-            bool isRecompiler = true;
-            bool is_x64 = true;
             BUS bus = CreateHardware(biosPath, bootPath, isBootingEXE);
-            CPU CPU = CPUWrapper.CreateInstance(isRecompiler, is_x64, isBootingEXE, bootPath, bus);
-
-            string cpuType = CPUWrapper.GetCPUType();
+            CPU CPU = CPUWrapper.CreateInstance(CpuType, isBootingEXE, bootPath, bus);
             mainWindow.MainCPU = CPU;
 
             string bootName;
@@ -54,13 +57,13 @@ namespace PSXSharp {
                 bootName = "PSX-BIOS";
             }
 
-            mainWindow.Title = $"OpenGL | {cpuType} | {bootName}";
+            mainWindow.Title = $"OpenGL | {CPUWrapper.CPUTypeName} | {bootName}";
             mainWindow.TitleCopy = mainWindow.Title;
 
             mainWindow.Run();       //Infinite loop 
+
             mainWindow.FrameTimer.Dispose();
-            mainWindow.Dispose();   //Will reach this if the render window 
-            mainWindow = null;
+            mainWindow.Dispose(); 
             bus.SerialIO1.Dispose();
         }   
 

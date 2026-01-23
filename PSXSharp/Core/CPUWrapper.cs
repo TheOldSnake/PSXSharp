@@ -1,37 +1,48 @@
 ﻿using PSXSharp.Core.Interpreter;
 using PSXSharp.Core.x64_Recompiler;
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using static PSXSharp.PSX_OpenTK;
 
 namespace PSXSharp.Core {
     public static class CPUWrapper {
         private static CPU? CPU;
-        private static string? CPUType;
+        private static CPUType CpuType;
+        public static string? CPUTypeName { get; private set; }
+
         public static BUS BUS => CPU.GetBUS();
-        public static CPU CreateInstance(bool isRecompiler, bool isX64, bool isBootingEXE, string bootPath, BUS bus) {
+        public static bool IsCompatibleWithX64JIT => RuntimeInformation.ProcessArchitecture == Architecture.X64 && RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        public static CPU CreateInstance(CPUType cpuType, bool isBootingEXE, string bootPath, BUS bus) {
             if (CPU != null) {
                 throw new Exception("Cannot create more than one CPU");
             }
 
-            if (isRecompiler) {
-                if (isX64) {
-                    if (RuntimeInformation.ProcessArchitecture != Architecture.X64 || !RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
-                        MessageBox.Show("Unsupported OS/Architecture.\nProgram will exit.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        throw new NotSupportedException();
+            switch (cpuType) {
+                case CPUType.Interpreter:
+                    CPU = new CPU_Interpreter(isBootingEXE, bootPath, bus);
+                    CPUTypeName = "Interpreter";
+                    break;          
+                    
+                case CPUType.MSILRecompiler:
+                    CPU = new CPU_Interpreter(isBootingEXE, bootPath, bus);
+                    CPUTypeName = "MSIL JIT";
+                    break;            
+
+                case CPUType.x64Recompiler:
+                    if (!IsCompatibleWithX64JIT) {
+                        MessageBox.Show("Unsupported OS/Architecture for x64 JIT.\nEmulator will exit.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Environment.Exit(0);
                     }
 
                     CPU = CPU_x64_Recompiler.GetCPU(isBootingEXE, bootPath, bus);
-                    CPUType = "x64 JIT";
+                    CPUTypeName = "x64 JIT";
+                    break;            
 
-                } else {
-                    CPU = new CPU_MSIL_Recompiler(isBootingEXE, bootPath, bus);
-                    CPUType = "MSIL JIT";
-                }
-
-            } else {
-                CPU = new CPU_Interpreter(isBootingEXE, bootPath, bus);
-                CPUType = "Interpreter";
+                default:
+                    throw new UnreachableException($"Unreachable case");
             }
 
             return CPU;
@@ -42,10 +53,6 @@ namespace PSXSharp.Core {
                 throw new Exception("CPU was not created");
             }
             return CPU;
-        }
-
-        public static string GetCPUType() { 
-            return CPUType;
         }
 
         public static void DisposeCPU() {
