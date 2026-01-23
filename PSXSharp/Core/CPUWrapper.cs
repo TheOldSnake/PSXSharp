@@ -20,7 +20,8 @@ namespace PSXSharp.Core {
                 throw new Exception("Cannot create more than one CPU");
             }
 
-            switch (cpuType) {
+            CpuType = cpuType;
+            switch (CpuType) {
                 case CPUType.Interpreter:
                     CPU = new CPU_Interpreter(isBootingEXE, bootPath, bus);
                     CPUTypeName = "Interpreter";
