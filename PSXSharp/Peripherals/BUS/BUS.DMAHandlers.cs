@@ -195,8 +195,11 @@ namespace PSXSharp {
             uint currentAddress;
             while (transferSize > 0) {
                 currentAddress = baseAddress & 0x1FFFFC;
-                data = transferSize == 1 ? 0xFFFFFF : (baseAddress - 4) & 0x1FFFFF;
+
+                //On the last iteration terminate the list by writing 0xFFFFFF
+                data = transferSize == 1 ? 0xFFFFFF : (baseAddress - 4) & 0x1FFFFF; 
                 RAM.Write<uint>(currentAddress, data);
+
                 baseAddress += step;
                 transferSize--;
             }
