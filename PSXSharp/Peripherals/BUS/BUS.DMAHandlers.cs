@@ -45,11 +45,12 @@ namespace PSXSharp {
 
             uint data;
             uint currentAddress;
-            while (transferSize-- > 0) {
+            while (transferSize > 0) {
                 currentAddress = baseAddress & 0x1FFFFC;
                 data = RAM.Read<uint>(currentAddress);
                 MDEC.CommandAndParameters(data);
                 baseAddress += step;
+                transferSize--;
             }
         }
 
@@ -61,11 +62,12 @@ namespace PSXSharp {
 
             uint data;
             uint currentAddress;
-            while (transferSize-- > 0) {
+            while (transferSize > 0) {
                 currentAddress = baseAddress & 0x1FFFFC;
                 data = MDEC.ReadCurrentMacroblock();
                 RAM.Write<uint>(currentAddress, data);
                 baseAddress += step;
+                transferSize--;
             }
         }
 
@@ -79,7 +81,7 @@ namespace PSXSharp {
             }
 
             void GPUToRam() {
-                while (transferSize-- > 0) {
+                while (transferSize > 0) {
                     currentAddress = baseAddress & 0x1FFFFC;
                     data = GPU.CurrentTransfare.ReadWord();
                     RAM.Write<uint>(currentAddress, data);
@@ -88,15 +90,17 @@ namespace PSXSharp {
                         GPU.currentState = GPU.GPUState.Idle;
                     }
                     baseAddress += step;
+                    transferSize--;
                 }
             }
 
             void RamToGPU() {
-                while (transferSize-- > 0) {
+                while (transferSize > 0) {
                     currentAddress = baseAddress & 0x1FFFFC;
                     data = RAM.Read<uint>(currentAddress);
                     GPU.WriteGP0(data);
                     baseAddress += step;
+                    transferSize--;
                 }
             }
         }
@@ -108,7 +112,7 @@ namespace PSXSharp {
             int transferCount = 0;
             uint address = baseAddress & 0x1FFFFC;
 
-            while (transferCount++ < MAX_TRANSFER_COUNT) {
+            while (transferCount < MAX_TRANSFER_COUNT) {
                 //First word contains how many words to transfer and the address of the next node
                 uint header = RAM.Read<uint>(address);
                 uint wordsCount = header >> 24;
@@ -126,6 +130,7 @@ namespace PSXSharp {
 
                 //Get the address of the next node
                 address = header & 0x1FFFFC;
+                transferCount++;
             }
         }
 
@@ -137,11 +142,12 @@ namespace PSXSharp {
 
             uint data;
             uint currentAddress;
-            while (transferSize-- > 0) {
+            while (transferSize > 0) {
                 currentAddress = baseAddress & 0x1FFFFC;
                 data = CDROM.DataController.ReadWord();
                 RAM.Write<uint>(currentAddress, data);
                 baseAddress += step;
+                transferSize--;
             }
         }
 
@@ -155,20 +161,22 @@ namespace PSXSharp {
             }
 
             void SPUToRam() {
-                while (transferSize-- > 0) {
+                while (transferSize > 0) {
                     currentAddress = baseAddress & 0x1FFFFC;
                     data = SPU.ReadDMA();
                     RAM.Write<uint>(currentAddress, data);
                     baseAddress += step;
+                    transferSize--;
                 }
             }
 
             void RamToSPU() {
-                while (transferSize-- > 0) {
+                while (transferSize > 0) {
                     currentAddress = baseAddress & 0x1FFFFC;
                     data = RAM.Read<uint>(currentAddress);
                     SPU.WriteDMA(data);
                     baseAddress += step;
+                    transferSize--;
                 }
             }
         }
@@ -185,11 +193,12 @@ namespace PSXSharp {
 
             uint data;
             uint currentAddress;
-            while (transferSize-- > 0) {
+            while (transferSize > 0) {
                 currentAddress = baseAddress & 0x1FFFFC;
                 data = transferSize == 1 ? 0xFFFFFF : (baseAddress - 4) & 0x1FFFFF;
                 RAM.Write<uint>(currentAddress, data);
                 baseAddress += step;
+                transferSize--;
             }
         }
     }
