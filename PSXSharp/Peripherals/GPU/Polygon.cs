@@ -127,45 +127,44 @@ namespace PSXSharp {
                 semiTransparency = (page >> 5) & 3;
             }
 
-            Span<short> verticies_span = [
+            Span<short> verticies_span = stackalloc short[] {
                 (short)vertices[0], (short)(vertices[0] >> 16),
                 (short)vertices[1], (short)(vertices[1] >> 16),
                 (short)vertices[2], (short)(vertices[2] >> 16),
-            ];
+            };
 
-            ReadOnlySpan<byte> colors_span = [
+            ReadOnlySpan<byte> colors_span = stackalloc byte[] {
                 (byte)colors[0], (byte)(colors[0] >> 8), (byte)(colors[0] >> 16),
                 (byte)colors[1], (byte)(colors[1] >> 8), (byte)(colors[1] >> 16),
                 (byte)colors[2], (byte)(colors[2] >> 8), (byte)(colors[2] >> 16),
-            ];
+            };
 
-            ReadOnlySpan<ushort> uv_span = [
+            ReadOnlySpan<ushort> uv_span = stackalloc ushort[] {
                 (ushort)(uv[0] & 0xFF), (ushort)((uv[0] >> 8) & 0xFF),
                 (ushort)(uv[1] & 0xFF), (ushort)((uv[1] >> 8) & 0xFF),
                 (ushort)(uv[2] & 0xFF), (ushort)((uv[2] >> 8) & 0xFF),
-            ];
+            };
 
             GLRenderBackend.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
 
             if (isQuad) {
-                verticies_span = [
+                verticies_span = stackalloc short[] {
                     (short)vertices[1], (short)(vertices[1] >> 16),
                     (short)vertices[2], (short)(vertices[2] >> 16),
                     (short)vertices[3], (short)(vertices[3] >> 16),
-                ];
+                };
 
-                colors_span = [
+                colors_span = stackalloc byte[] {
                     (byte)colors[1], (byte)(colors[1] >> 8), (byte)(colors[1] >> 16),
                     (byte)colors[2], (byte)(colors[2] >> 8), (byte)(colors[2] >> 16),
                     (byte)colors[3], (byte)(colors[3] >> 8), (byte)(colors[3] >> 16),
-                ];
+                };
 
-                uv_span = [
+               uv_span = stackalloc ushort[] {
                     (ushort)(uv[1] & 0xFF), (ushort)((uv[1] >> 8) & 0xFF),
                     (ushort)(uv[2] & 0xFF), (ushort)((uv[2] >> 8) & 0xFF),
                     (ushort)(uv[3] & 0xFF), (ushort)((uv[3] >> 8) & 0xFF),
-
-                ];
+                };
 
                 GLRenderBackend.DrawTrinangles(verticies_span, colors_span, uv_span, isTextured, clut, page, textureMode, isDithered, semiTransparency);
             }
