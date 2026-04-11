@@ -74,6 +74,12 @@ namespace PSXSharp.Core.x64_Recompiler {
 
         private static void EmitRegisterRead(Assembler asm, AssemblerRegister32 dst, int srcNumber) {
             //asm.mov(r15, GetGPRAddress(srcNumber));     //We use r15 ONLY for holding 64-bit addresses
+
+            if (srcNumber == 0) {
+                asm.xor(dst, dst);
+                return;
+            }
+
             int regOffset = GPR_Offset + (srcNumber * 4);
             asm.mov(dst, __dword_ptr[rbx + regOffset]);
         }
@@ -110,7 +116,12 @@ namespace PSXSharp.Core.x64_Recompiler {
             } else {
                 int destOffset = GPR_Offset + (dstNumber * 4);
                 if (destOffset != 0) {
-                    asm.mov(__dword_ptr[rbx + destOffset], imm);
+                    if (imm == 0) {
+                        asm.xor(eax, eax);
+                        asm.mov(__dword_ptr[rbx + destOffset], eax);
+                    } else {
+                        asm.mov(__dword_ptr[rbx + destOffset], imm);
+                    }
                 }            
             }
         }
@@ -146,7 +157,8 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.Label(ref skip);
 
             //Write zero as the load has either been written or canceled
-            asm.mov(__qword_ptr[rbx + ReadyRegisterLoad_number], 0);
+            asm.xor(eax, eax);
+            asm.mov(__qword_ptr[rbx + ReadyRegisterLoad_number], eax);
         }
 
         private static void EmitCheckCacheIsolation(Assembler asm) {
@@ -171,7 +183,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitSlti(int rs, int rt, uint imm, bool signed, Assembler asm) {
-            asm.mov(eax, 0);                                //Set result to 0 initially
+            asm.xor(eax, eax);                              //Set result to 0 initially
             EmitRegisterRead(asm, ecx, rs);                 //Load GPR[rs]
             asm.mov(edx, imm);                              //Load imm
             asm.cmp(ecx, edx);                              //Compare 
@@ -189,7 +201,7 @@ namespace PSXSharp.Core.x64_Recompiler {
         }
 
         public static void EmitSlt(int rs, int rt, int rd, bool signed, Assembler asm) {
-            asm.mov(eax, 0);                                //Set result to 0 initially
+            asm.xor(eax, eax);                              //Set result to 0 initially
             EmitRegisterRead(asm, ecx, rs);                 //Load GPR[rs]
             EmitRegisterRead(asm, edx, rt);                 //Load GPR[rt]
             asm.cmp(ecx, edx);                              //Compare 
@@ -211,7 +223,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             EmitRegisterRead(asm, ecx, rs);                                 //Load GPR[rs]
 
             if (type > 1) {
-                asm.mov(edx, 0);                                            //Load 0, ignore the rt parameter 
+                asm.xor(edx, edx);                                          //Load 0, ignore the rt parameter 
             } else {
                 EmitRegisterRead(asm, edx, rt);                             //Load GPR[rt]
             }
@@ -279,7 +291,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
             asm.mov(r8d, CompileTime_NextPC);        //Save a copy of next pc
             EmitRegisterRead(asm, ecx, rs);                       //Read GPR[rs]
-            asm.mov(edx, 0);                                      //Load 0
+            asm.xor(edx, edx);                                    //Load 0
             asm.cmp(ecx, edx);                                    //Compare
 
             //Test the inverse, if true then we don't branch
@@ -437,7 +449,7 @@ namespace PSXSharp.Core.x64_Recompiler {
             if (signed) {
                 //If numerator >= 0 && denominator == 0:
                 //Check the inverse
-                asm.mov(esi, 0);
+                asm.xor(esi, esi);
                 asm.cmp(eax, esi);
                 asm.jl(check2);
                 asm.cmp(ecx, esi);
@@ -491,7 +503,7 @@ namespace PSXSharp.Core.x64_Recompiler {
 
                 //Only one check, if denominator == 0
                 //Check the inverse
-                asm.mov(esi, 0);
+                asm.xor(esi, esi);
                 asm.cmp(ecx, esi);
                 asm.jne(normalCase);
 
@@ -502,7 +514,7 @@ namespace PSXSharp.Core.x64_Recompiler {
                 asm.jmp(end);
 
                 asm.Label(ref normalCase);
-                asm.mov(edx, 0);
+                asm.xor(edx, edx);
                 asm.div(ecx);                               //Divide  edx:eax / ecx
             }
 
@@ -1187,8 +1199,9 @@ namespace PSXSharp.Core.x64_Recompiler {
             asm.mov(__dword_ptr[rbx + CurrentPCOffset], CompileTime_CurrentPC);
             asm.mov(__dword_ptr[rbx + PCOffset], CompileTime_PC);
             asm.mov(__dword_ptr[rbx + NextPCOffset], CompileTime_NextPC);
-            asm.mov(__dword_ptr[rbx + BranchFlagOffset], 0);
-            asm.mov(__dword_ptr[rbx + DelaySlotOffset], 0);
+            asm.xor(eax, eax);
+            asm.mov(__dword_ptr[rbx + BranchFlagOffset], eax);
+            asm.mov(__dword_ptr[rbx + DelaySlotOffset], eax);
         }
 
         public static void EmitSavePC(Assembler asm) {
